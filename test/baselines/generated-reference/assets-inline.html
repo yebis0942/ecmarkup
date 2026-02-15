@@ -398,7 +398,17 @@ function Menu() {
   }
 
   // update active clause on scroll
-  window.addEventListener('scroll', debounce(this.updateActiveClause.bind(this)));
+  let scrollRafPending = false;
+  let boundUpdate = this.updateActiveClause.bind(this);
+  window.addEventListener('scroll', function () {
+    if (!scrollRafPending) {
+      scrollRafPending = true;
+      requestAnimationFrame(function () {
+        scrollRafPending = false;
+        boundUpdate();
+      });
+    }
+  });
   this.updateActiveClause();
 
   // prevent menu scrolling from scrolling the body
@@ -435,16 +445,24 @@ Menu.prototype.updateActiveClause = function () {
 };
 
 Menu.prototype.setActiveClause = function (clause) {
+  if (
+    this.$activeClause &&
+    clause.length === this.$activeClause.length &&
+    clause.every((el, i) => el === this.$activeClause[i])
+  ) {
+    return;
+  }
   this.$activeClause = clause;
   this.revealInToc(this.$activeClause);
 };
 
 Menu.prototype.revealInToc = function (path) {
-  let current = this.$toc.querySelectorAll('li.revealed');
+  let current = this._revealedItems || [];
   for (let i = 0; i < current.length; i++) {
     current[i].classList.remove('revealed');
     current[i].classList.remove('revealed-leaf');
   }
+  this._revealedItems = [];
 
   current = this.$toc;
   let index = 0;
@@ -453,6 +471,7 @@ Menu.prototype.revealInToc = function (path) {
     for (let i = 0; i < children.length; i++) {
       if ('#' + path[index].id === children[i].children[1].hash) {
         children[i].classList.add('revealed');
+        this._revealedItems.push(children[i]);
         if (index === path.length - 1) {
           children[i].classList.add('revealed-leaf');
           let rect = children[i].getBoundingClientRect();
@@ -475,34 +494,42 @@ Menu.prototype.revealInToc = function (path) {
   }
 };
 
+let marginCache = new WeakMap();
+function getClauseMargins($clause) {
+  let cached = marginCache.get($clause);
+  if (cached) return cached;
+  let $header = $clause.querySelector('h1');
+  let clauseStyles = getComputedStyle($clause);
+  let marginTop = Math.max(
+    0,
+    parseInt(clauseStyles['margin-top']),
+    $header ? parseInt(getComputedStyle($header)['margin-top']) : 0,
+  );
+  let marginBottom = Math.max(0, parseInt(clauseStyles['margin-bottom']));
+  let result = { marginTop, marginBottom };
+  marginCache.set($clause, result);
+  return result;
+}
+
 function findActiveClause(root, path) {
   path = path || [];
 
   let visibleClauses = getVisibleClauses(root, path);
   let midpoint = Math.floor(window.innerHeight / 2);
 
-  for (let [$clause, path] of visibleClauses) {
-    let { top: clauseTop, bottom: clauseBottom } = $clause.getBoundingClientRect();
+  for (let [$clause, path, rect] of visibleClauses) {
     let isFullyVisibleAboveTheFold =
-      clauseTop > 0 && clauseTop < midpoint && clauseBottom < window.innerHeight;
+      rect.top > 0 && rect.top < midpoint && rect.bottom < window.innerHeight;
     if (isFullyVisibleAboveTheFold) {
       return path;
     }
   }
 
   visibleClauses.sort(([, pathA], [, pathB]) => pathB.length - pathA.length);
-  for (let [$clause, path] of visibleClauses) {
-    let { top: clauseTop, bottom: clauseBottom } = $clause.getBoundingClientRect();
-    let $header = $clause.querySelector('h1');
-    let clauseStyles = getComputedStyle($clause);
-    let marginTop = Math.max(
-      0,
-      parseInt(clauseStyles['margin-top']),
-      parseInt(getComputedStyle($header)['margin-top']),
-    );
-    let marginBottom = Math.max(0, parseInt(clauseStyles['margin-bottom']));
+  for (let [$clause, path, rect] of visibleClauses) {
+    let { marginTop, marginBottom } = getClauseMargins($clause);
     let crossesMidpoint =
-      clauseTop - marginTop <= midpoint && clauseBottom + marginBottom >= midpoint;
+      rect.top - marginTop <= midpoint && rect.bottom + marginBottom >= midpoint;
     if (crossesMidpoint) {
       return path;
     }
@@ -511,25 +538,27 @@ function findActiveClause(root, path) {
   return path;
 }
 
-function getVisibleClauses(root, path) {
+function getVisibleClauses(root, path, result) {
   let childClauses = getChildClauses(root);
-  path = path || [];
-
-  let result = [];
+  if (!result) {
+    path = path || [];
+    result = [];
+  }
 
   let seenVisibleClause = false;
   for (let $clause of childClauses) {
-    let { top: clauseTop, bottom: clauseBottom } = $clause.getBoundingClientRect();
+    let rect = $clause.getBoundingClientRect();
     let isPartiallyVisible =
-      (clauseTop > 0 && clauseTop < window.innerHeight) ||
-      (clauseBottom > 0 && clauseBottom < window.innerHeight) ||
-      (clauseTop < 0 && clauseBottom > window.innerHeight);
+      (rect.top > 0 && rect.top < window.innerHeight) ||
+      (rect.bottom > 0 && rect.bottom < window.innerHeight) ||
+      (rect.top < 0 && rect.bottom > window.innerHeight);
 
     if (isPartiallyVisible) {
       seenVisibleClause = true;
-      let innerPath = path.concat($clause);
-      result.push([$clause, innerPath]);
-      result.push(...getVisibleClauses($clause, innerPath));
+      path.push($clause);
+      result.push([$clause, path.slice(), rect]);
+      getVisibleClauses($clause, path, result);
+      path.pop();
     } else if (seenVisibleClause) {
       break;
     }
