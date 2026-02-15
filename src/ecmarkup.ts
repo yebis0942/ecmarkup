@@ -51,6 +51,8 @@ export interface Options {
   log?: (msg: string) => void;
   warn?: (err: EcmarkupError) => void;
   committee?: number;
+  versionBar?: string;
+  versionBarDir?: string;
 }
 
 export async function build(

@@ -106,6 +106,11 @@ interface TextNodeContext {
   currentId: string | null;
 }
 
+export interface VersionBarManifest {
+  versions: { key: string; label: string }[];
+  sections: Record<string, { presentIn: string[] }>;
+}
+
 const builders: BuilderInterface[] = [
   Clause,
   Algorithm,
@@ -342,6 +347,7 @@ export default class Spec {
   /** @internal */ _emuMetasToRemove: Set<HTMLElement>;
   /** @internal */ refsByClause: { [refId: string]: [string] };
   /** @internal */ topLevelImportedNodes: Map<Node, EmuImportElement>;
+  /** @internal */ versionBarManifest: VersionBarManifest | null;
 
   private _fetch: (file: string, token: CancellationToken) => PromiseLike<string>;
 
@@ -389,6 +395,7 @@ export default class Spec {
     this._emuMetasToRemove = new Set();
     this.refsByClause = Object.create(null);
     this.topLevelImportedNodes = new Map();
+    this.versionBarManifest = null;
 
     this.processMetadata();
     Object.assign(this.opts, opts);
@@ -597,6 +604,9 @@ export default class Spec {
     this.log('Building reference graph...');
     this.buildReferenceGraph();
 
+    this.loadVersionBarManifest();
+    this.buildVersionBars();
+
     this.highlightCode();
     this.setMetaCharset();
     this.setMetaViewport();
@@ -688,7 +698,15 @@ export default class Spec {
       this.doc.body.insertBefore(ele, this.doc.body.firstChild);
     }
 
-    const jsContents = await concatJs(sdoJs, tocJs);
+    let versionBarJs = '';
+    if (this.versionBarManifest) {
+      const manifestJson = JSON.stringify(this.versionBarManifest);
+      const versionBarDataDir = this.opts.versionBarDir ?? '';
+      const versionBarData = `let defined_versionBarManifest = JSON.parse(\`${manifestJson.replace(/[\\`$]/g, '\\$&')}\`);\nlet defined_versionBarDataDir = \`${versionBarDataDir.replace(/[\\`$]/g, '\\$&')}\`;`;
+      const versionBarCode = await utils.readFile(path.join(__dirname, '../js/versionBar.js'));
+      versionBarJs = versionBarData + '\n' + versionBarCode;
+    }
+    const jsContents = await concatJs(sdoJs, tocJs, versionBarJs);
     const jsSha = sha(jsContents);
 
     await this.buildAssets(jsContents, jsSha);
@@ -733,6 +751,63 @@ export default class Spec {
     };
     for (const sub of this.subclauses) {
       label(sub);
+    }
+  }
+
+  private loadVersionBarManifest() {
+    if (!this.opts.versionBar) return;
+    this.log('Loading version bar manifest...');
+    const manifestPath = this.opts.versionBar;
+    try {
+      const raw = fs.readFileSync(manifestPath, 'utf-8');
+      this.versionBarManifest = JSON.parse(raw) as VersionBarManifest;
+      this.log(`  Loaded ${Object.keys(this.versionBarManifest.sections).length} sections from version bar manifest`);
+    } catch (e) {
+      this.warn({
+        type: 'global',
+        ruleId: 'version-bar',
+        message: `Failed to load version bar manifest from ${manifestPath}: ${e}`,
+      });
+    }
+  }
+
+  private buildVersionBars() {
+    if (!this.versionBarManifest) return;
+    this.log('Building version bars...');
+    const manifest = this.versionBarManifest;
+
+    const buildForClause = (clause: Clause) => {
+      const sectionInfo = manifest.sections[clause.id];
+      if (sectionInfo && clause.header) {
+        const versionBar = this.doc.createElement('div');
+        versionBar.className = 'version-bar';
+        versionBar.setAttribute('data-section-id', clause.id);
+
+        for (const version of manifest.versions) {
+          const span = this.doc.createElement('span');
+          const isPresent = sectionInfo.presentIn.includes(version.key);
+          span.className = isPresent ? 'version-segment' : 'version-segment version-segment--absent';
+          span.setAttribute('data-version', version.key);
+
+          // Extract short edition number from the key (e.g., "es6" -> "6", "es15" -> "15")
+          const editionNum = version.key.replace(/^es/, '');
+          span.textContent = editionNum;
+          span.setAttribute('title', isPresent ? version.label : `${version.label} — not present in this version`);
+
+          versionBar.appendChild(span);
+        }
+
+        // Insert after the <h1> header
+        clause.header.after(versionBar);
+      }
+
+      for (const sub of clause.subclauses) {
+        buildForClause(sub);
+      }
+    };
+
+    for (const sub of this.subclauses) {
+      buildForClause(sub);
     }
   }
 
