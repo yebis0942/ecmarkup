@@ -3,17 +3,26 @@
 // Version compare widget: adds a per-clause button that links to ecma262-compare
 // for viewing diffs between ECMAScript spec versions.
 
+// Release boundaries are fetched at runtime from ecma262-section-history's
+// releases.json, which derives them from `git merge-base <tag> main` — the
+// point on main where each release branch forked. The list below is a baked-in
+// fallback for when that fetch fails, using the same merge-base hashes.
+// ES2016 is the exception: its release predates snapshot coverage, so it uses
+// the actual release commit (on a side branch) and is never overridden.
+const versionCompareReleasesUrl =
+  'https://yebis0942.github.io/ecma262-section-history/releases.json';
+
 let definedVersions = [
   { label: 'ES2016', hash: 'b154ce84698377ab53fe88c889633263607f4423' },
-  { label: 'ES2017', hash: '7301daf5ab1f0959b203c2e63ecccb21fe13d5e5' },
-  { label: 'ES2018', hash: '0d37f42998733743c294209884120d722384f095' },
-  { label: 'ES2019', hash: 'bc6fd169661d8737d7087bb822ef2a9c7148ac0b' },
-  { label: 'ES2020', hash: 'dfd5ea2ec5862de21b005737650ba08bc57271fa' },
-  { label: 'ES2021', hash: 'fc85c50181b2b8d7d75f034800528d87fda6b654' },
+  { label: 'ES2017', hash: 'c8a6acfb99a364a114ac0152e3a071539dc1ca1a' },
+  { label: 'ES2018', hash: '59d73dc08ea371866c1d9d45843e6752f26a48e4' },
+  { label: 'ES2019', hash: '362cb1074cb5cc51867d98b4c3304e75117724d3' },
+  { label: 'ES2020', hash: '1b7ca8d5c87f2655acf976ae72efcbf75f48ca15' },
+  { label: 'ES2021', hash: 'a53b61fbe9c42f2f0bda2267fb3f51d6ecd904d9' },
   { label: 'ES2022', hash: '9d440aefa584bcc0d76dd4de611eabcc4f687043' },
-  { label: 'ES2023', hash: '2ac367880d620c49258c9a045833b28c3944b982' },
-  { label: 'ES2024', hash: '24eed9a02d509081571d35212d24bebcdc9e66fd' },
-  { label: 'ES2025', hash: '5117d4f48a3fd9adea8fd2883ec70019836fc1e8' },
+  { label: 'ES2023', hash: '1c5ca183844ab453f939f1ee6165747c8b1c64ee' },
+  { label: 'ES2024', hash: '6ec325c22e9b3c47397c95c6b301491e76edb768' },
+  { label: 'ES2025', hash: 'ab261035815e2dff8705a0fe9a5eb7660ecea78c' },
 ];
 
 let versionCompareState = {
@@ -23,7 +32,48 @@ let versionCompareState = {
   selectingEndpoint: 'from', // 'from' or 'to'
 };
 
+// Merge releases.json entries ([{ release: 'es2025', hash, seq }, ...], oldest
+// first) into definedVersions: known labels get their hash updated, unknown
+// releases (e.g. a future ES2026) are appended.
+function applyVersionCompareReleases(releases) {
+  if (!Array.isArray(releases) || releases.length === 0) return;
+  for (let i = 0; i < releases.length; i++) {
+    let entry = releases[i];
+    if (typeof entry.release !== 'string' || typeof entry.hash !== 'string') return;
+  }
+  let updated = definedVersions.map(v => {
+    let match = releases.find(r => r.release === v.label.toLowerCase());
+    return match ? { label: v.label, hash: match.hash } : v;
+  });
+  for (let i = 0; i < releases.length; i++) {
+    let r = releases[i];
+    if (!updated.some(v => v.label.toLowerCase() === r.release)) {
+      updated.push({ label: r.release.toUpperCase(), hash: r.hash });
+    }
+  }
+  definedVersions = updated;
+  // Reset selection defaults; close any open panel so it is rebuilt from the
+  // new list on next open.
+  closePanel();
+  versionCompareState.fromIndex = definedVersions.length - 2;
+  versionCompareState.toIndex = definedVersions.length - 1;
+  versionCompareState.selectingEndpoint = 'from';
+}
+
+function loadVersionCompareReleases() {
+  if (typeof fetch !== 'function') return;
+  fetch(versionCompareReleasesUrl)
+    .then(res => (res.ok ? res.json() : null))
+    .then(releases => {
+      if (releases) applyVersionCompareReleases(releases);
+    })
+    .catch(() => {
+      // Network/CORS failures are fine; the baked-in list is used as-is.
+    });
+}
+
 function initVersionCompare() {
+  loadVersionCompareReleases();
   let clauses = document.querySelectorAll('emu-clause[id], emu-annex[id]');
   for (let i = 0; i < clauses.length; i++) {
     let clause = clauses[i];
