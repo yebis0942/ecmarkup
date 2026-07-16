@@ -1807,3 +1807,70 @@ li.menu-search-result[data-kind]::before {
 .version-compare-close-btn:hover {
   opacity: 1;
 }
+
+/* Implementation Links Widget */
+.impl-links-btn {
+  font-size: 0.5em;
+  vertical-align: middle;
+  margin-left: 0.5em;
+  padding: 1px 6px;
+  border: 1px solid var(--control-border-color);
+  border-radius: 3px;
+  background: var(--control-background-color);
+  color: var(--control-link-foreground-color);
+  cursor: pointer;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-weight: normal;
+  line-height: 1.4;
+}
+
+.impl-links-btn:hover {
+  background: var(--control-dark-background-color);
+}
+
+.impl-links-panel {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  z-index: 100;
+  background: var(--background-color);
+  border: 1px solid var(--control-border-color);
+  border-radius: 6px;
+  padding: 10px 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 280px;
+  font-size: 14px;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-weight: normal;
+}
+
+.impl-links-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 3px 0;
+}
+
+.impl-links-engine {
+  flex: 0 0 10em;
+  color: var(--foreground-color);
+  white-space: nowrap;
+}
+
+.impl-links-engine-tag {
+  margin-left: 0.5em;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.impl-links-link {
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.impl-links-alt {
+  font-size: 11px;
+  opacity: 0.7;
+  margin-left: -6px;
+}

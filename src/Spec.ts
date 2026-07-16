@@ -2300,6 +2300,7 @@ const jsDependencies = [
   'listNumbers.js',
   'superscripts.js',
   'versionCompare.js',
+  'implLinks.js',
 ];
 async function concatJs(...extras: string[]) {
   let dependencies = await Promise.all(
