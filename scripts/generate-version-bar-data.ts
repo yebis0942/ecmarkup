@@ -228,7 +228,8 @@ export function sanitizeSectionHtml(html: string): string {
 }
 
 /**
- * Extract all emu-clause and emu-annex sections from the HTML.
+ * Extract all sections from the HTML (emu-clause / emu-annex, with a
+ * plain-<section> fallback for old-format editions — see below).
  * Returns a map of section ID -> the section's own body HTML.
  */
 export function extractSections(html: string): Map<string, string> {
@@ -236,12 +237,30 @@ export function extractSections(html: string): Map<string, string> {
   const sections = new Map<string, string>();
 
   // Collect every section element in document order.
+  //
+  // Modern editions (ES2016 / 7.0 and later) mark sections with emu-clause /
+  // emu-annex elements. Old-format editions (ES2015 / 6.0) predate ecmarkup's
+  // output format and use plain <section id="sec-..."> elements instead; their
+  // ids follow the same sec-* convention as later editions, so oldids
+  // resolution works unchanged. When no emu-clause/emu-annex is found we fall
+  // back to that format, restricting to id^="sec-" to skip the ToC
+  // (<section id="contents">) and the anonymous wrappers (Introduction,
+  // Bibliography).
+  let isNestedSection = isSectionNode;
   const clauses: P5Node[] = [];
   walkAst(doc, node => {
     if (isSectionNode(node) && getAttr(node, 'id')) {
       clauses.push(node);
     }
   });
+  if (clauses.length === 0) {
+    isNestedSection = node => node.tagName === 'section';
+    walkAst(doc, node => {
+      if (node.tagName === 'section' && (getAttr(node, 'id') ?? '').startsWith('sec-')) {
+        clauses.push(node);
+      }
+    });
+  }
 
   for (const clause of clauses) {
     const id = getAttr(clause, 'id')!;
@@ -263,7 +282,7 @@ export function extractSections(html: string): Map<string, string> {
       if (!children) return;
       for (let i = 0; i < children.length; i++) {
         const child = children[i];
-        if (isSectionNode(child)) {
+        if (isNestedSection(child)) {
           detached.push({ parent: node, index: i, node: child });
           children.splice(i, 1);
           i--;
