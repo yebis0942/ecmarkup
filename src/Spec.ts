@@ -775,7 +775,9 @@ export default class Spec {
     try {
       const raw = fs.readFileSync(manifestPath, 'utf-8');
       this.versionBarManifest = JSON.parse(raw) as VersionBarManifest;
-      this.log(`  Loaded ${Object.keys(this.versionBarManifest.sections).length} sections from version bar manifest`);
+      this.log(
+        `  Loaded ${Object.keys(this.versionBarManifest.sections).length} sections from version bar manifest`,
+      );
     } catch (e) {
       this.warn({
         type: 'global',
@@ -800,14 +802,19 @@ export default class Spec {
         for (const version of manifest.versions) {
           const span = this.doc.createElement('span');
           const isPresent = sectionInfo.presentIn.includes(version.key);
-          span.className = isPresent ? 'version-segment' : 'version-segment version-segment--absent';
+          span.className = isPresent
+            ? 'version-segment'
+            : 'version-segment version-segment--absent';
           span.setAttribute('data-version', version.key);
 
           // Extract short edition number from the key (e.g., "es6" -> "6", "es15" -> "15").
           // Fall back to the full key for unexpected key shapes (no "es" prefix).
           const editionNum = /^es(.+)$/.exec(version.key)?.[1] ?? version.key;
           span.textContent = editionNum;
-          span.setAttribute('title', isPresent ? version.label : `${version.label} — not present in this version`);
+          span.setAttribute(
+            'title',
+            isPresent ? version.label : `${version.label} — not present in this version`,
+          );
 
           versionBar.appendChild(span);
         }
