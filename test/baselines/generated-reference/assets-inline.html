@@ -399,17 +399,23 @@ function Menu() {
 
   // update active clause on scroll
   let scrollRafPending = false;
-  let boundUpdate = this.updateActiveClause.bind(this);
-  window.addEventListener('scroll', function () {
+  const boundUpdate = this.updateActiveClause.bind(this);
+  window.addEventListener('scroll', () => {
     if (!scrollRafPending) {
       scrollRafPending = true;
-      requestAnimationFrame(function () {
+      requestAnimationFrame(() => {
         scrollRafPending = false;
         boundUpdate();
       });
     }
   });
   this.updateActiveClause();
+
+  // clause margins can depend on viewport width (media queries), so drop the
+  // cached values when the window is resized
+  window.addEventListener('resize', () => {
+    marginCache = new WeakMap();
+  });
 
   // prevent menu scrolling from scrolling the body
   this.$toc.addEventListener('wheel', e => {
@@ -517,7 +523,7 @@ function findActiveClause(root, path) {
   let visibleClauses = getVisibleClauses(root, path);
   let midpoint = Math.floor(window.innerHeight / 2);
 
-  for (let [$clause, path, rect] of visibleClauses) {
+  for (let [, path, rect] of visibleClauses) {
     let isFullyVisibleAboveTheFold =
       rect.top > 0 && rect.top < midpoint && rect.bottom < window.innerHeight;
     if (isFullyVisibleAboveTheFold) {
