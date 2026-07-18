@@ -4,19 +4,17 @@
  * Usage:
  *   npx tsx scripts/generate-version-bar-data.ts [--config scripts/version-bar-config.json] [--spec-html path/to/current-spec.html] --out-dir out/version-bar-data
  *
- * Memory: parsing one full edition with jsdom builds a multi-GB tree, and V8
- * does not reliably reclaim those trees between editions (even with
- * --expose-gc). Each jsdom parse therefore runs in a short-lived subprocess
- * that writes sanitized section strings to a temp file and returns all of its
- * memory to the OS on exit; the parent only ever holds plain strings and fits
- * in the default heap. Pass --in-process to run everything in one process
- * (debugging only; a full multi-edition run then needs a very large
- * --max-old-space-size).
+ * Memory: parsing uses parse5 directly (plain-object ASTs, roughly an order of
+ * magnitude smaller than jsdom documents and reliably GC'd). Each edition is
+ * additionally parsed in a short-lived subprocess that writes sanitized section
+ * strings to a temp file and returns all of its memory to the OS on exit, so
+ * the parent's peak stays flat no matter how many editions are configured.
+ * Pass --in-process to run everything in one process instead.
  *
  * This script:
  * 1. Reads version config (version keys, labels, URLs)
  * 2. Fetches each version's HTML (with disk cache in .version-cache/)
- * 3. Parses sections from each version using JSDOM (in a per-edition subprocess)
+ * 3. Parses sections from each version using parse5 (in a per-edition subprocess)
  * 4. Optionally reads oldids from the current spec to map renamed section IDs
  * 5. Outputs:
  *    - version-bar-manifest.json (version list + which sections exist in which versions)
@@ -27,7 +25,11 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
-import { JSDOM } from 'jsdom';
+// parse5 (already a transitive dependency of jsdom) builds plain-object ASTs
+// that are an order of magnitude smaller than jsdom documents and are reliably
+// garbage-collected. jsdom itself parses and serializes through parse5, so the
+// serialized output is identical to the previous jsdom-based implementation.
+import { parse, serialize } from 'parse5';
 // Type-only import: shares the manifest shape with the runtime consumer in src/Spec.ts.
 // (tsx erases type-only imports, so this has no effect on execution.) The local shape
 // must stay structurally identical to Spec.VersionBarManifest.
@@ -165,49 +167,92 @@ const DANGEROUS_ELEMENTS = [
   'form',
 ];
 
-// A single reusable parsing document. Creating a fresh JSDOM per fragment is far
-// too memory-hungry at spec scale (tens of thousands of fragments would spawn
-// tens of thousands of JSDOM instances and exhaust the heap), so we parse every
-// fragment into a detached <div> owned by one shared document instead.
-let sanitizeDoc: Document | null = null;
+// Minimal structural view of a parse5 AST node — just what our traversals need.
+interface P5Node {
+  nodeName: string;
+  tagName?: string;
+  attrs?: { name: string; value: string }[];
+  childNodes?: P5Node[];
+  // <template> children live under `content`, not `childNodes`.
+  content?: P5Node;
+}
+
+/** Preorder walk over a parse5 AST (including <template> contents). */
+function walkAst(node: P5Node, visit: (node: P5Node) => void) {
+  visit(node);
+  for (const child of node.childNodes ?? []) {
+    walkAst(child, visit);
+  }
+  if (node.content) {
+    walkAst(node.content, visit);
+  }
+}
+
+function getAttr(node: P5Node, name: string): string | null {
+  const attr = node.attrs?.find(a => a.name === name);
+  return attr != null ? attr.value : null;
+}
+
+function isSectionNode(node: P5Node): boolean {
+  return node.tagName === 'emu-clause' || node.tagName === 'emu-annex';
+}
+
+/** Parse a full document and return its <body> wrapper's first child (a <div> we supply). */
+function parseInBodyContext(fragment: string): P5Node {
+  const doc = parse(
+    `<!DOCTYPE html><html><head></head><body><div>${fragment}</div></body></html>`,
+  ) as unknown as P5Node;
+  const htmlEl = doc.childNodes!.find(n => n.tagName === 'html')!;
+  const body = htmlEl.childNodes!.find(n => n.tagName === 'body')!;
+  return body.childNodes![0];
+}
 
 export function sanitizeSectionHtml(html: string): string {
-  if (sanitizeDoc == null) {
-    sanitizeDoc = new JSDOM('<!DOCTYPE html><body></body>').window.document;
-  }
-  // A detached container is cheap to allocate and easy to GC between calls.
-  const root = sanitizeDoc.createElement('div');
-  root.innerHTML = html;
+  // Wrap in a <div> inside a full document so the fragment parses in body
+  // context, matching how the client will later parse it via innerHTML.
+  const wrapper = parseInBodyContext(html);
 
-  for (const el of root.querySelectorAll(DANGEROUS_ELEMENTS.join(','))) {
-    el.remove();
-  }
-
-  // Strip event-handler attributes and javascript: URLs from every element.
-  for (const el of root.querySelectorAll('*')) {
-    for (const attr of Array.from(el.attributes)) {
-      const name = attr.name.toLowerCase();
-      if (name.startsWith('on')) {
-        // on* event handler (onclick, onerror, onload, ...)
-        el.removeAttribute(attr.name);
-        continue;
-      }
-      // URL-bearing attributes: href, src, xlink:href, and similar `*:href` / `*:src`.
-      if (
-        name === 'href' ||
-        name === 'src' ||
-        name === 'xlink:href' ||
-        name.endsWith(':href') ||
-        name.endsWith(':src')
-      ) {
-        if (isJavascriptUrl(attr.value)) {
-          el.removeAttribute(attr.name);
-        }
+  const sanitizeNode = (node: P5Node) => {
+    if (node.childNodes) {
+      // Remove elements that can execute code or load external resources.
+      node.childNodes = node.childNodes.filter(
+        child => !(child.tagName != null && DANGEROUS_ELEMENTS.includes(child.tagName)),
+      );
+      for (const child of node.childNodes) {
+        sanitizeNode(child);
       }
     }
-  }
+    if (node.content) {
+      sanitizeNode(node.content);
+    }
+    // Strip event-handler attributes and javascript: URLs from every element.
+    if (node.attrs) {
+      node.attrs = node.attrs.filter(attr => {
+        const name = attr.name.toLowerCase();
+        if (name.startsWith('on')) {
+          // on* event handler (onclick, onerror, onload, ...)
+          return false;
+        }
+        // URL-bearing attributes: href, src, xlink:href, and similar `*:href` / `*:src`.
+        if (
+          (name === 'href' ||
+            name === 'src' ||
+            name === 'xlink:href' ||
+            name.endsWith(':href') ||
+            name.endsWith(':src')) &&
+          isJavascriptUrl(attr.value)
+        ) {
+          return false;
+        }
+        return true;
+      });
+    }
+  };
+  sanitizeNode(wrapper);
 
-  return root.innerHTML;
+  // serialize() emits the node's children — i.e. the wrapper's innerHTML.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return serialize(wrapper as any);
 }
 
 /**
@@ -215,39 +260,55 @@ export function sanitizeSectionHtml(html: string): string {
  * Returns a map of section ID -> the section's own body HTML.
  */
 export function extractSections(html: string): Map<string, string> {
-  const dom = new JSDOM(html);
-  const doc = dom.window.document;
+  const doc = parse(html) as unknown as P5Node;
   const sections = new Map<string, string>();
 
-  for (const clause of doc.querySelectorAll('emu-clause[id], emu-annex[id]')) {
-    const id = clause.getAttribute('id');
-    if (id) {
-      // Store only this section's OWN body, excluding nested emu-clause / emu-annex
-      // descendants. Taking the raw innerHTML would make a parent clause embed all of
-      // its child clauses verbatim, so every child's content would be duplicated across
-      // its ancestors, bloating the per-section data.
-      //
-      // We must NOT cloneNode(true) the clause here: on a large spec that copies the
-      // whole subtree of every clause (top-level clauses hold thousands of nodes),
-      // spiking memory into an OOM. Instead, temporarily swap each nested section for
-      // an empty text node (which serializes to nothing), read the clause's innerHTML,
-      // then restore the nested sections in reverse order so nested-within-nested is
-      // rebuilt correctly.
-      const nestedSections = clause.querySelectorAll('emu-clause, emu-annex');
-      const restores: [Text, Element][] = [];
-      for (const nested of nestedSections) {
-        const placeholder = doc.createTextNode('');
-        nested.replaceWith(placeholder);
-        restores.push([placeholder, nested]);
+  // Collect every section element in document order.
+  const clauses: P5Node[] = [];
+  walkAst(doc, node => {
+    if (isSectionNode(node) && getAttr(node, 'id')) {
+      clauses.push(node);
+    }
+  });
+
+  for (const clause of clauses) {
+    const id = getAttr(clause, 'id')!;
+    // Store only this section's OWN body, excluding nested emu-clause / emu-annex
+    // descendants. Serializing the whole subtree would make a parent clause embed
+    // all of its child clauses verbatim, so every child's content would be
+    // duplicated across its ancestors, bloating the per-section data.
+    //
+    // Copying the subtree just to prune it would spike memory (top-level clauses
+    // hold thousands of nodes), so instead temporarily detach each topmost nested
+    // section from its parent's childNodes, serialize, then restore in reverse
+    // order to rebuild the original tree exactly.
+    const detached: { parent: P5Node; index: number; node: P5Node }[] = [];
+    const detachTopmostNested = (node: P5Node) => {
+      if (node.content) {
+        detachTopmostNested(node.content);
       }
-      sections.set(id, clause.innerHTML);
-      for (let i = restores.length - 1; i >= 0; i--) {
-        restores[i][0].replaceWith(restores[i][1]);
+      const children = node.childNodes;
+      if (!children) return;
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i];
+        if (isSectionNode(child)) {
+          detached.push({ parent: node, index: i, node: child });
+          children.splice(i, 1);
+          i--;
+        } else {
+          detachTopmostNested(child);
+        }
       }
+    };
+    detachTopmostNested(clause);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    sections.set(id, serialize(clause as any));
+    for (let i = detached.length - 1; i >= 0; i--) {
+      const { parent, index, node } = detached[i];
+      parent.childNodes!.splice(index, 0, node);
     }
   }
 
-  dom.window.close();
   return sections;
 }
 
@@ -256,13 +317,13 @@ export function extractSections(html: string): Map<string, string> {
  * The current spec uses oldids="old1,old2" attributes on emu-clause/emu-annex elements.
  */
 function buildOldIdMap(specHtml: string): Map<string, string> {
-  const dom = new JSDOM(specHtml);
-  const doc = dom.window.document;
+  const doc = parse(specHtml) as unknown as P5Node;
   const oldIdMap = new Map<string, string>();
 
-  for (const clause of doc.querySelectorAll('emu-clause[oldids], emu-annex[oldids]')) {
-    const currentId = clause.getAttribute('id');
-    const oldids = clause.getAttribute('oldids');
+  walkAst(doc, node => {
+    if (!isSectionNode(node)) return;
+    const currentId = getAttr(node, 'id');
+    const oldids = getAttr(node, 'oldids');
     if (currentId && oldids) {
       for (const oldid of oldids.split(',')) {
         const trimmed = oldid.trim();
@@ -271,9 +332,8 @@ function buildOldIdMap(specHtml: string): Map<string, string> {
         }
       }
     }
-  }
+  });
 
-  dom.window.close();
   return oldIdMap;
 }
 
@@ -393,7 +453,7 @@ async function main(args: Args) {
   }
 
   // Fetch and parse each version. In the default (subprocess) mode the child
-  // does the jsdom parse and hands back sanitized strings, so this process's
+  // does the parsing and hands back sanitized strings, so this process's
   // peak memory stays flat no matter how many editions are configured.
   const versionSections = new Map<string, Map<string, string>>();
   for (const version of config.versions) {
