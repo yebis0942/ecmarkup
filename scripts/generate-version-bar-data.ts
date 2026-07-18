@@ -17,6 +17,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { JSDOM } from 'jsdom';
+// Type-only import: shares the manifest shape with the runtime consumer in src/Spec.ts.
+// (tsx erases type-only imports, so this has no effect on execution.) The local shape
+// must stay structurally identical to Spec.VersionBarManifest.
+import type { VersionBarManifest } from '../src/Spec';
 
 interface VersionConfig {
   key: string;
@@ -26,15 +30,6 @@ interface VersionConfig {
 
 interface Config {
   versions: VersionConfig[];
-}
-
-interface ManifestSection {
-  presentIn: string[];
-}
-
-interface Manifest {
-  versions: { key: string; label: string }[];
-  sections: Record<string, ManifestSection>;
 }
 
 function parseArgs(argv: string[]) {
@@ -85,8 +80,82 @@ async function fetchWithCache(url: string): Promise<string> {
 }
 
 /**
+ * Shared helper for the per-section data file name.
+ *
+ * The client (js/versionBar.js) fetches these files as
+ * `encodeURIComponent(sectionId) + '.json'`, so the writer must produce exactly
+ * the same name to avoid 404s. Percent-encoding also neutralizes path traversal:
+ * any '/', '\\', '.' sequences in an id become percent escapes, so the result is
+ * always a single, flat file name with no directory separators.
+ */
+export function sectionFileName(sectionId: string): string {
+  return encodeURIComponent(sectionId) + '.json';
+}
+
+/**
+ * Return true when an attribute value resolves to a `javascript:` URL.
+ * Control characters and surrounding whitespace are stripped first, mirroring how
+ * browsers normalize URLs before dispatching them.
+ */
+function isJavascriptUrl(value: string): boolean {
+  const normalized = value.replace(/[\x00-\x20]+/g, '').toLowerCase();
+  return normalized.startsWith('javascript:');
+}
+
+/**
+ * Conservatively sanitize a section HTML fragment before it is persisted.
+ *
+ * Trust boundary: the output of this function is written into the per-section JSON
+ * files and later inserted by the client via `innerHTML` (see js/versionBar.js).
+ * Because the client performs no sanitization of its own, the fragment MUST be
+ * sanitized here, at write time, so that only already-safe HTML crosses the
+ * boundary. This removes active-content elements, event-handler attributes, and
+ * `javascript:` URLs.
+ */
+export function sanitizeSectionHtml(html: string): string {
+  // Wrap in a container so we can round-trip the fragment through the parser.
+  const dom = new JSDOM(`<!DOCTYPE html><body><div id="__ecmarkup_sanitize_root__">${html}</div></body>`);
+  const doc = dom.window.document;
+  const root = doc.getElementById('__ecmarkup_sanitize_root__')!;
+
+  // Remove elements that can execute code or load external resources.
+  const DANGEROUS_ELEMENTS = ['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'base', 'form'];
+  for (const el of root.querySelectorAll(DANGEROUS_ELEMENTS.join(','))) {
+    el.remove();
+  }
+
+  // Strip event-handler attributes and javascript: URLs from every element.
+  for (const el of root.querySelectorAll('*')) {
+    for (const attr of Array.from(el.attributes)) {
+      const name = attr.name.toLowerCase();
+      if (name.startsWith('on')) {
+        // on* event handler (onclick, onerror, onload, ...)
+        el.removeAttribute(attr.name);
+        continue;
+      }
+      // URL-bearing attributes: href, src, xlink:href, and similar `*:href` / `*:src`.
+      if (
+        name === 'href' ||
+        name === 'src' ||
+        name === 'xlink:href' ||
+        name.endsWith(':href') ||
+        name.endsWith(':src')
+      ) {
+        if (isJavascriptUrl(attr.value)) {
+          el.removeAttribute(attr.name);
+        }
+      }
+    }
+  }
+
+  const result = root.innerHTML;
+  dom.window.close();
+  return result;
+}
+
+/**
  * Extract all emu-clause and emu-annex sections from the HTML.
- * Returns a map of section ID -> innerHTML.
+ * Returns a map of section ID -> the section's own body HTML.
  */
 function extractSections(html: string): Map<string, string> {
   const dom = new JSDOM(html);
@@ -96,7 +165,16 @@ function extractSections(html: string): Map<string, string> {
   for (const clause of doc.querySelectorAll('emu-clause[id], emu-annex[id]')) {
     const id = clause.getAttribute('id');
     if (id) {
-      sections.set(id, clause.innerHTML);
+      // Store only this section's OWN body, excluding nested emu-clause / emu-annex
+      // descendants. Taking the raw innerHTML would make a parent clause embed all of
+      // its child clauses verbatim, so every child's content would be duplicated across
+      // its ancestors, bloating the per-section data. Clone the clause, drop the nested
+      // section descendants, then read what remains.
+      const clone = clause.cloneNode(true) as Element;
+      for (const nested of clone.querySelectorAll('emu-clause, emu-annex')) {
+        nested.remove();
+      }
+      sections.set(id, clone.innerHTML);
     }
   }
 
@@ -137,6 +215,35 @@ function resolveId(id: string, oldIdMap: Map<string, string>): string {
   return oldIdMap.get(id) ?? id;
 }
 
+/**
+ * Build an O(1)-lookup reverse index for a single version: resolved (current) section ID
+ * -> the section body to serve for it.
+ *
+ * This replaces the previous per-lookup `[...sections.keys()].some(...)` / full-key scans
+ * (which made both manifest construction and the per-section loop O(n²)) with a single O(n)
+ * pass per version. Precedence is preserved to match the original behavior exactly:
+ *   1. A section whose raw id equals the queried id wins (the old `sections.get(id)` branch).
+ *   2. Otherwise the first section (in document order) whose id resolves to the queried id
+ *      wins (the old fallback loop that `break`s on the first match).
+ * `resolved.has(id)` is therefore equivalent to the old `found` test, and `resolved.get(id)`
+ * to the old content selection.
+ */
+function buildResolvedIndex(sections: Map<string, string>, oldIdMap: Map<string, string>): Map<string, string> {
+  const resolved = new Map<string, string>();
+  // Pass 1: first (document-order) section per resolved id — the fallback branch.
+  for (const [id, content] of sections) {
+    const rid = resolveId(id, oldIdMap);
+    if (!resolved.has(rid)) {
+      resolved.set(rid, content);
+    }
+  }
+  // Pass 2: a direct raw-id match takes priority — the `sections.get(id)` branch.
+  for (const [id, content] of sections) {
+    resolved.set(id, content);
+  }
+  return resolved;
+}
+
 async function main() {
   const { configPath, outDir, specHtml } = parseArgs(process.argv);
 
@@ -162,6 +269,13 @@ async function main() {
     versionSections.set(version.key, sections);
   }
 
+  // Build a per-version O(1) reverse index (resolved id -> content) once, so the manifest
+  // and per-section loops below are O(n) overall instead of O(n²).
+  const versionResolved = new Map<string, Map<string, string>>();
+  for (const version of config.versions) {
+    versionResolved.set(version.key, buildResolvedIndex(versionSections.get(version.key)!, oldIdMap));
+  }
+
   // Collect all section IDs (resolved to current IDs)
   const allSectionIds = new Set<string>();
   for (const [, sections] of versionSections) {
@@ -171,7 +285,7 @@ async function main() {
   }
 
   // Build manifest
-  const manifest: Manifest = {
+  const manifest: VersionBarManifest = {
     versions: config.versions.map(v => ({ key: v.key, label: v.label })),
     sections: {},
   };
@@ -179,11 +293,9 @@ async function main() {
   for (const sectionId of [...allSectionIds].sort()) {
     const presentIn: string[] = [];
     for (const version of config.versions) {
-      const sections = versionSections.get(version.key)!;
-      // Check if this section (or any of its old IDs) exists in this version
-      const found = sections.has(sectionId) ||
-        [...sections.keys()].some(id => resolveId(id, oldIdMap) === sectionId);
-      if (found) {
+      // O(1) lookup: presence in the reverse index == the old
+      // `sections.has(sectionId) || keys.some(id => resolveId(id) === sectionId)` test.
+      if (versionResolved.get(version.key)!.has(sectionId)) {
         presentIn.push(version.key);
       }
     }
@@ -196,6 +308,7 @@ async function main() {
   fs.mkdirSync(outDir, { recursive: true });
   const dataDir = path.join(outDir, 'version-bar-data');
   fs.mkdirSync(dataDir, { recursive: true });
+  const resolvedDataDir = path.resolve(dataDir);
 
   // Write manifest
   const manifestPath = path.join(outDir, 'version-bar-manifest.json');
@@ -208,24 +321,26 @@ async function main() {
     const sectionData: Record<string, string> = {};
 
     for (const version of config.versions) {
-      const sections = versionSections.get(version.key)!;
-      // Find the content: try the current ID first, then look for old IDs
-      let content = sections.get(sectionId);
-      if (!content) {
-        for (const [id, html] of sections) {
-          if (resolveId(id, oldIdMap) === sectionId) {
-            content = html;
-            break;
-          }
-        }
-      }
+      // O(1) lookup via the reverse index (was an O(n) scan per version).
+      const content = versionResolved.get(version.key)!.get(sectionId);
       if (content) {
-        sectionData[version.key] = content;
+        // Trust boundary: sanitize before persisting. These fragments are read back by
+        // the client and inserted via innerHTML without further sanitization, so the
+        // stored HTML must already be safe.
+        sectionData[version.key] = sanitizeSectionHtml(content);
       }
     }
 
     if (Object.keys(sectionData).length > 0) {
-      const sectionPath = path.join(dataDir, `${sectionId}.json`);
+      // Use the shared, percent-encoded file name so it matches the client's fetch URL
+      // and cannot contain path separators.
+      const sectionPath = path.join(dataDir, sectionFileName(sectionId));
+      // Belt-and-suspenders: ensure the resolved path stays directly inside dataDir.
+      const resolved = path.resolve(sectionPath);
+      if (path.dirname(resolved) !== resolvedDataDir) {
+        console.warn(`  [skip] Refusing to write section outside data dir: ${sectionId}`);
+        continue;
+      }
       fs.writeFileSync(sectionPath, JSON.stringify(sectionData), 'utf-8');
       sectionFileCount++;
     }
@@ -235,7 +350,10 @@ async function main() {
   console.log('Done.');
 }
 
-main().catch(err => {
-  console.error(err);
-  process.exit(1);
-});
+// Guard execution so the module can be imported (e.g. by tests) without running main().
+if (require.main === module) {
+  main().catch(err => {
+    console.error(err);
+    process.exit(1);
+  });
+}
