@@ -700,9 +700,23 @@ export default class Spec {
 
     let versionBarJs = '';
     if (this.versionBarManifest) {
-      const manifestJson = JSON.stringify(this.versionBarManifest);
-      const versionBarDataDir = this.opts.versionBarDir ?? '';
-      const versionBarData = `let defined_versionBarManifest = JSON.parse(\`${manifestJson.replace(/[\\`$]/g, '\\$&')}\`);\nlet defined_versionBarDataDir = \`${versionBarDataDir.replace(/[\\`$]/g, '\\$&')}\`;`;
+      // Emit per-section data files (if available) and determine the directory
+      // the client should fetch them from.
+      const versionBarDataDir = this.emitVersionBarData();
+      // Embed the manifest as a plain JS value. JSON is a valid JS expression, so
+      // `let x = <json>;` parses directly. We only need to neutralize the sequences
+      // that could break out of the surrounding <script> element or the JS parse:
+      // `<`/`>` (to prevent `</script>` breakout, since section ids come from
+      // external HTML) and the line separators U+2028/U+2029.
+      const escapeForScript = (s: string) =>
+        s
+          .replace(/</g, '\\u003c')
+          .replace(/>/g, '\\u003e')
+          .replace(/\u2028/g, '\\u2028')
+          .replace(/\u2029/g, '\\u2029');
+      const manifestLiteral = escapeForScript(JSON.stringify(this.versionBarManifest));
+      const dataDirLiteral = escapeForScript(JSON.stringify(versionBarDataDir));
+      const versionBarData = `let versionBarManifest = ${manifestLiteral};\nlet versionBarDataDir = ${dataDirLiteral};`;
       const versionBarCode = await utils.readFile(path.join(__dirname, '../js/versionBar.js'));
       versionBarJs = versionBarData + '\n' + versionBarCode;
     }
@@ -789,8 +803,9 @@ export default class Spec {
           span.className = isPresent ? 'version-segment' : 'version-segment version-segment--absent';
           span.setAttribute('data-version', version.key);
 
-          // Extract short edition number from the key (e.g., "es6" -> "6", "es15" -> "15")
-          const editionNum = version.key.replace(/^es/, '');
+          // Extract short edition number from the key (e.g., "es6" -> "6", "es15" -> "15").
+          // Fall back to the full key for unexpected key shapes (no "es" prefix).
+          const editionNum = /^es(.+)$/.exec(version.key)?.[1] ?? version.key;
           span.textContent = editionNum;
           span.setAttribute('title', isPresent ? version.label : `${version.label} — not present in this version`);
 
@@ -809,6 +824,94 @@ export default class Spec {
     for (const sub of this.subclauses) {
       buildForClause(sub);
     }
+  }
+
+  /**
+   * Emit the per-section version-bar data files into `generatedFiles` (when a
+   * source directory is available) and return the directory value to inject as
+   * the client's `versionBarDataDir`. The client fetches each section as
+   * `versionBarDataDir + '/version-bar-data/' + encodeURIComponent(id) + '.json'`,
+   * so the returned value must point at the directory that *contains* the
+   * `version-bar-data/` folder.
+   */
+  private emitVersionBarData(): string {
+    // If the user explicitly configured a data directory, respect it: use it as
+    // the injected value and leave the data placement entirely to them.
+    if (this.opts.versionBarDir != null) {
+      return this.opts.versionBarDir;
+    }
+
+    // Source data lives next to the manifest, in a sibling `version-bar-data/`.
+    if (!this.opts.versionBar) return '';
+    const sourceDir = path.join(path.dirname(this.opts.versionBar), 'version-bar-data');
+    if (!fs.existsSync(sourceDir)) {
+      this.warn({
+        type: 'global',
+        ruleId: 'version-bar',
+        message: `version-bar-data directory not found at ${sourceDir}; version bars will fall back to the embedded manifest only (per-section content will not load)`,
+      });
+      return '';
+    }
+
+    // Read the section JSON files. The generator writes each file as
+    // `encodeURIComponent(sectionId) + '.json'`; we preserve that name but pass
+    // it through path.basename so a stray path separator in a filename cannot
+    // escape the target directory.
+    const readSection = (name: string) => ({
+      basename: path.basename(name),
+      contents: fs.readFileSync(path.join(sourceDir, name), 'utf-8'),
+    });
+    const files = fs.readdirSync(sourceDir).filter(f => f.endsWith('.json'));
+
+    if (this.assets.type === 'none') {
+      // No asset files are written, so there is nowhere sensible to place data.
+      return '';
+    }
+
+    if (this.assets.type === 'external') {
+      // outDir matches the computation in buildAssets' external branch.
+      const outDir = this.opts.outfile
+        ? this.opts.multipage
+          ? this.opts.outfile
+          : path.dirname(this.opts.outfile)
+        : process.cwd();
+      const targetDir = path.join(this.assets.directory, 'version-bar-data');
+      for (const f of files) {
+        const { basename, contents } = readSection(f);
+        this.generatedFiles.set(path.join(targetDir, basename), contents);
+      }
+      // Known limitation: multipage subpages live at `outfile/multipage/*.html`,
+      // one directory deeper than the index. A single injected `versionBarDataDir`
+      // constant cannot resolve correctly from both the index and the subpages, so
+      // we emit relative to the index and warn that subpage fetches are unsupported.
+      if (this.opts.multipage) {
+        this.warn({
+          type: 'global',
+          ruleId: 'version-bar',
+          message:
+            'version-bar-data is emitted relative to the multipage index; version bars on subpages (multipage/*.html) will not be able to fetch per-section content (known limitation)',
+        });
+      }
+      return path.relative(outDir, this.assets.directory);
+    }
+
+    // Inline assets: single HTML file. Place data alongside the output HTML and
+    // inject an empty dir so the client fetches `version-bar-data/<id>.json`.
+    if (!this.opts.outfile) {
+      this.warn({
+        type: 'global',
+        ruleId: 'version-bar',
+        message:
+          'cannot emit version-bar-data for an inline build without an output file; version bars will fall back to the embedded manifest only',
+      });
+      return '';
+    }
+    const targetDir = path.join(path.dirname(this.opts.outfile), 'version-bar-data');
+    for (const f of files) {
+      const { basename, contents } = readSection(f);
+      this.generatedFiles.set(path.join(targetDir, basename), contents);
+    }
+    return '';
   }
 
   // checks that AOs which do/don't return completion records are invoked appropriately
