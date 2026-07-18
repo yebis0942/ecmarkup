@@ -132,6 +132,12 @@ const build = debounce(async function build() {
     if (args['no-minify']) {
       opts.minify = false;
     }
+    if (args['version-bar'] != null) {
+      opts.versionBar = args['version-bar'];
+    }
+    if (args['version-bar-dir'] != null) {
+      opts.versionBarDir = args['version-bar-dir'];
+    }
 
     let warned = false;
 

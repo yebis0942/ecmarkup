@@ -40,6 +40,18 @@ export const options = [
       'The directory in which to place generated assets when using --assets=external. Implies --assets=external. Defaults to [outfile]/assets.',
   },
   {
+    name: 'version-bar',
+    type: String,
+    typeLabel: '{underline file}',
+    description: 'Path to a version-bar manifest JSON (enables the version bar widget)',
+  },
+  {
+    name: 'version-bar-dir',
+    type: String,
+    typeLabel: '{underline dir}',
+    description: 'URL path prefix under which version-bar-data/ is served',
+  },
+  {
     name: 'no-toc',
     type: Boolean,
     description: "Don't include the table of contents",
