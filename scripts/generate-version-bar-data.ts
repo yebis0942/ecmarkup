@@ -4,17 +4,14 @@
  * Usage:
  *   npx tsx scripts/generate-version-bar-data.ts [--config scripts/version-bar-config.json] [--spec-html path/to/current-spec.html] --out-dir out/version-bar-data
  *
- * Memory: parsing uses parse5 directly (plain-object ASTs, roughly an order of
- * magnitude smaller than jsdom documents and reliably GC'd). Each edition is
- * additionally parsed in a short-lived subprocess that writes sanitized section
- * strings to a temp file and returns all of its memory to the OS on exit, so
- * the parent's peak stays flat no matter how many editions are configured.
- * Pass --in-process to run everything in one process instead.
+ * Memory: parsing uses parse5 directly (plain-object ASTs, several times
+ * smaller than jsdom documents and reliably GC'd), so a full multi-edition run
+ * fits comfortably in the default Node heap.
  *
  * This script:
  * 1. Reads version config (version keys, labels, URLs)
  * 2. Fetches each version's HTML (with disk cache in .version-cache/)
- * 3. Parses sections from each version using parse5 (in a per-edition subprocess)
+ * 3. Parses sections from each version using parse5
  * 4. Optionally reads oldids from the current spec to map renamed section IDs
  * 5. Outputs:
  *    - version-bar-manifest.json (version list + which sections exist in which versions)
@@ -22,10 +19,8 @@
  */
 
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
-import { spawnSync } from 'child_process';
-// parse5 (already a transitive dependency of jsdom) builds plain-object ASTs
+// parse5 (already a direct dependency of ecmarkup) builds plain-object ASTs
 // that are an order of magnitude smaller than jsdom documents and are reliably
 // garbage-collected. jsdom itself parses and serializes through parse5, so the
 // serialized output is identical to the previous jsdom-based implementation.
@@ -49,20 +44,12 @@ interface Args {
   configPath: string;
   outDir: string;
   specHtml: string;
-  outFile: string;
-  workerExtract: string;
-  workerOldids: boolean;
-  inProcess: boolean;
 }
 
 function parseArgs(argv: string[]): Args {
   let configPath = path.join(__dirname, 'version-bar-config.json');
   let outDir = '';
   let specHtml = '';
-  let outFile = '';
-  let workerExtract = '';
-  let workerOldids = false;
-  let inProcess = false;
 
   for (let i = 2; i < argv.length; i++) {
     if (argv[i] === '--config' && argv[i + 1]) {
@@ -71,30 +58,15 @@ function parseArgs(argv: string[]): Args {
       outDir = argv[++i];
     } else if (argv[i] === '--spec-html' && argv[i + 1]) {
       specHtml = argv[++i];
-    } else if (argv[i] === '--out-file' && argv[i + 1]) {
-      outFile = argv[++i];
-    } else if (argv[i] === '--worker-extract' && argv[i + 1]) {
-      // internal: subprocess mode, extract a single edition
-      workerExtract = argv[++i];
-    } else if (argv[i] === '--worker-oldids') {
-      // internal: subprocess mode, build the oldid map
-      workerOldids = true;
-    } else if (argv[i] === '--in-process') {
-      inProcess = true;
     }
   }
 
-  if (workerExtract || workerOldids) {
-    if (!outFile || (workerOldids && !specHtml)) {
-      console.error('internal worker modes require --out-file (and --spec-html for --worker-oldids)');
-      process.exit(1);
-    }
-  } else if (!outDir) {
-    console.error('Usage: npx tsx scripts/generate-version-bar-data.ts --out-dir <dir> [--config <config.json>] [--spec-html <spec.html>] [--in-process]');
+  if (!outDir) {
+    console.error('Usage: npx tsx scripts/generate-version-bar-data.ts --out-dir <dir> [--config <config.json>] [--spec-html <spec.html>]');
     process.exit(1);
   }
 
-  return { configPath, outDir, specHtml, outFile, workerExtract, workerOldids, inProcess };
+  return { configPath, outDir, specHtml };
 }
 
 const CACHE_DIR = path.join(__dirname, '..', '.version-cache');
@@ -389,84 +361,26 @@ async function extractAndSanitizeVersion(version: VersionConfig): Promise<Map<st
   return sanitized;
 }
 
-/** Subprocess entry: extract one edition and write it as JSON [id, html] pairs. */
-async function workerExtractMain(args: Args) {
-  const config: Config = JSON.parse(fs.readFileSync(args.configPath, 'utf-8'));
-  const version = config.versions.find(v => v.key === args.workerExtract);
-  if (!version) {
-    throw new Error(`Unknown version key: ${args.workerExtract}`);
-  }
-  const sections = await extractAndSanitizeVersion(version);
-  // Serialize as an array of pairs: a plain object would re-order integer-like
-  // keys and break the document-order precedence in buildResolvedIndex.
-  fs.writeFileSync(args.outFile, JSON.stringify([...sections]), 'utf-8');
-  console.log(
-    `  Extracted ${sections.size} sections (subprocess rss ${Math.round(process.memoryUsage().rss / 1048576)} MB)`,
-  );
-}
-
-/** Subprocess entry: build the oldid map from the current spec, written as JSON pairs. */
-async function workerOldidsMain(args: Args) {
-  const map = buildOldIdMap(fs.readFileSync(args.specHtml, 'utf-8'));
-  fs.writeFileSync(args.outFile, JSON.stringify([...map]), 'utf-8');
-  console.log(`  Found ${map.size} oldid mappings`);
-}
-
-/**
- * Re-run this script as a short-lived subprocess (see the memory note in the
- * file header). Prefers the locally installed tsx binary, falling back to npx.
- */
-function runChild(childArgs: string[]) {
-  const localTsx = path.join(__dirname, '..', 'node_modules', '.bin', 'tsx');
-  const [cmd, prefixArgs] = fs.existsSync(localTsx)
-    ? [localTsx, [] as string[]]
-    : ['npx', ['--yes', 'tsx']];
-  const result = spawnSync(cmd, [...prefixArgs, __filename, ...childArgs], { stdio: 'inherit' });
-  if (result.error) {
-    throw result.error;
-  }
-  if (result.status !== 0) {
-    throw new Error(`subprocess failed (exit ${result.status}): ${childArgs.join(' ')}`);
-  }
-}
-
 async function main(args: Args) {
-  const { configPath, outDir, specHtml, inProcess } = args;
+  const { configPath, outDir, specHtml } = args;
 
   const config: Config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-
-  // Temp dir for the [id, html] pair files the extraction subprocesses write.
-  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'version-bar-extract-'));
 
   // Build oldid map if spec HTML is provided
   let oldIdMap = new Map<string, string>();
   if (specHtml) {
     console.log('Building oldid map from current spec...');
-    if (inProcess) {
-      oldIdMap = buildOldIdMap(fs.readFileSync(specHtml, 'utf-8'));
-      console.log(`  Found ${oldIdMap.size} oldid mappings`);
-    } else {
-      const outFile = path.join(workDir, 'oldids.json');
-      runChild(['--worker-oldids', '--spec-html', specHtml, '--out-file', outFile]);
-      oldIdMap = new Map(JSON.parse(fs.readFileSync(outFile, 'utf-8')));
-    }
+    oldIdMap = buildOldIdMap(fs.readFileSync(specHtml, 'utf-8'));
+    console.log(`  Found ${oldIdMap.size} oldid mappings`);
   }
 
-  // Fetch and parse each version. In the default (subprocess) mode the child
-  // does the parsing and hands back sanitized strings, so this process's
-  // peak memory stays flat no matter how many editions are configured.
+  // Fetch and parse each version
   const versionSections = new Map<string, Map<string, string>>();
   for (const version of config.versions) {
     console.log(`Processing ${version.label}...`);
-    if (inProcess) {
-      const sections = await extractAndSanitizeVersion(version);
-      console.log(`  Extracted ${sections.size} sections`);
-      versionSections.set(version.key, sections);
-    } else {
-      const outFile = path.join(workDir, `sections-${version.key}.json`);
-      runChild(['--worker-extract', version.key, '--config', configPath, '--out-file', outFile]);
-      versionSections.set(version.key, new Map(JSON.parse(fs.readFileSync(outFile, 'utf-8'))));
-    }
+    const sections = await extractAndSanitizeVersion(version);
+    console.log(`  Extracted ${sections.size} sections`);
+    versionSections.set(version.key, sections);
   }
 
   // Build a per-version O(1) reverse index (resolved id -> content) once, so the manifest
@@ -547,19 +461,23 @@ async function main(args: Args) {
   }
 
   console.log(`Wrote ${sectionFileCount} section detail files to ${dataDir}`);
-  fs.rmSync(workDir, { recursive: true, force: true });
-  console.log('Done.');
+  // Report the peak rss so memory regressions are visible in the build log
+  // (Linux-only; /proc is absent elsewhere).
+  let peak = '';
+  try {
+    const match = /VmHWM:\s*(\d+) kB/.exec(fs.readFileSync('/proc/self/status', 'utf-8'));
+    if (match) {
+      peak = ` (peak rss ${Math.round(Number(match[1]) / 1024)} MB)`;
+    }
+  } catch {
+    // ignore
+  }
+  console.log(`Done.${peak}`);
 }
 
 // Guard execution so the module can be imported (e.g. by tests) without running main().
 if (require.main === module) {
-  const args = parseArgs(process.argv);
-  const entry = args.workerExtract
-    ? workerExtractMain(args)
-    : args.workerOldids
-      ? workerOldidsMain(args)
-      : main(args);
-  entry.catch(err => {
+  main(parseArgs(process.argv)).catch(err => {
     console.error(err);
     process.exit(1);
   });
