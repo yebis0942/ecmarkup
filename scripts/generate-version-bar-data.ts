@@ -112,14 +112,33 @@ function isJavascriptUrl(value: string): boolean {
  * boundary. This removes active-content elements, event-handler attributes, and
  * `javascript:` URLs.
  */
-export function sanitizeSectionHtml(html: string): string {
-  // Wrap in a container so we can round-trip the fragment through the parser.
-  const dom = new JSDOM(`<!DOCTYPE html><body><div id="__ecmarkup_sanitize_root__">${html}</div></body>`);
-  const doc = dom.window.document;
-  const root = doc.getElementById('__ecmarkup_sanitize_root__')!;
+// Elements that can execute code or load external resources.
+const DANGEROUS_ELEMENTS = [
+  'script',
+  'style',
+  'iframe',
+  'object',
+  'embed',
+  'link',
+  'meta',
+  'base',
+  'form',
+];
 
-  // Remove elements that can execute code or load external resources.
-  const DANGEROUS_ELEMENTS = ['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'base', 'form'];
+// A single reusable parsing document. Creating a fresh JSDOM per fragment is far
+// too memory-hungry at spec scale (tens of thousands of fragments would spawn
+// tens of thousands of JSDOM instances and exhaust the heap), so we parse every
+// fragment into a detached <div> owned by one shared document instead.
+let sanitizeDoc: Document | null = null;
+
+export function sanitizeSectionHtml(html: string): string {
+  if (sanitizeDoc == null) {
+    sanitizeDoc = new JSDOM('<!DOCTYPE html><body></body>').window.document;
+  }
+  // A detached container is cheap to allocate and easy to GC between calls.
+  const root = sanitizeDoc.createElement('div');
+  root.innerHTML = html;
+
   for (const el of root.querySelectorAll(DANGEROUS_ELEMENTS.join(','))) {
     el.remove();
   }
@@ -148,16 +167,14 @@ export function sanitizeSectionHtml(html: string): string {
     }
   }
 
-  const result = root.innerHTML;
-  dom.window.close();
-  return result;
+  return root.innerHTML;
 }
 
 /**
  * Extract all emu-clause and emu-annex sections from the HTML.
  * Returns a map of section ID -> the section's own body HTML.
  */
-function extractSections(html: string): Map<string, string> {
+export function extractSections(html: string): Map<string, string> {
   const dom = new JSDOM(html);
   const doc = dom.window.document;
   const sections = new Map<string, string>();
@@ -168,13 +185,25 @@ function extractSections(html: string): Map<string, string> {
       // Store only this section's OWN body, excluding nested emu-clause / emu-annex
       // descendants. Taking the raw innerHTML would make a parent clause embed all of
       // its child clauses verbatim, so every child's content would be duplicated across
-      // its ancestors, bloating the per-section data. Clone the clause, drop the nested
-      // section descendants, then read what remains.
-      const clone = clause.cloneNode(true) as Element;
-      for (const nested of clone.querySelectorAll('emu-clause, emu-annex')) {
-        nested.remove();
+      // its ancestors, bloating the per-section data.
+      //
+      // We must NOT cloneNode(true) the clause here: on a large spec that copies the
+      // whole subtree of every clause (top-level clauses hold thousands of nodes),
+      // spiking memory into an OOM. Instead, temporarily swap each nested section for
+      // an empty text node (which serializes to nothing), read the clause's innerHTML,
+      // then restore the nested sections in reverse order so nested-within-nested is
+      // rebuilt correctly.
+      const nestedSections = clause.querySelectorAll('emu-clause, emu-annex');
+      const restores: [Text, Element][] = [];
+      for (const nested of nestedSections) {
+        const placeholder = doc.createTextNode('');
+        nested.replaceWith(placeholder);
+        restores.push([placeholder, nested]);
       }
-      sections.set(id, clone.innerHTML);
+      sections.set(id, clause.innerHTML);
+      for (let i = restores.length - 1; i >= 0; i--) {
+        restores[i][0].replaceWith(restores[i][1]);
+      }
     }
   }
 
@@ -261,12 +290,21 @@ async function main() {
   // Fetch and parse each version
   const versionSections = new Map<string, Map<string, string>>();
 
+  // Each edition parses into a large (hundreds of MB) JSDOM tree. extractSections
+  // discards it, but the collector does not reclaim it before the next edition is
+  // parsed, so the trees pile up and exhaust the heap on a full multi-edition run.
+  // When run with --expose-gc, force a collection between editions to keep the peak
+  // at roughly one tree; without the flag this is a no-op (a slightly higher heap
+  // limit, e.g. NODE_OPTIONS=--max-old-space-size, is then needed).
+  const forceGc = (globalThis as { gc?: () => void }).gc;
+
   for (const version of config.versions) {
     console.log(`Processing ${version.label}...`);
     const html = await fetchWithCache(version.url);
     const sections = extractSections(html);
     console.log(`  Extracted ${sections.size} sections`);
     versionSections.set(version.key, sections);
+    forceGc?.();
   }
 
   // Build a per-version O(1) reverse index (resolved id -> content) once, so the manifest
