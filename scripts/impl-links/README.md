@@ -69,8 +69,7 @@ matched-count craters fail the run (`check-regression.mjs`, `force` input to
 bypass), sampled links are live-checked (`verify-links.mjs`), and the PR body
 carries a per-engine stats table. See DESIGN.md for details.
 ([create-pull-request](https://github.com/peter-evans/create-pull-request)
-requires "Allow GitHub Actions to create pull requests" in the repo settings;
-the variable update needs `actions: write`.)
+requires "Allow GitHub Actions to create pull requests" in the repo settings.)
 
 ## Serving the data
 

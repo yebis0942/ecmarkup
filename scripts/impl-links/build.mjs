@@ -27,11 +27,16 @@ const EXTRACT_DIR = process.env.IMPL_LINKS_EXTRACT_DIR || join(SCRIPT_DIR, 'extr
 const LIST_LIMIT = 20;
 
 function parseArgs(argv) {
-  const opts = { roots: {}, only: null, verbose: false };
+  const opts = { roots: {}, only: null, verbose: false, specBlob: null };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--verbose') {
       opts.verbose = true;
+    } else if (arg === '--spec-blob') {
+      // Git blob sha of the tc39/ecma262 spec.html this data was built against;
+      // recorded in meta so the update workflow can detect spec drift without
+      // any external state (GITHUB_TOKEN cannot write Actions variables).
+      opts.specBlob = argv[++i] ?? null;
     } else if (arg === '--root') {
       const value = argv[++i];
       const eq = value == null ? -1 : value.indexOf('=');
@@ -84,6 +89,7 @@ async function main() {
   console.log(`spec names: ${specNames.size} (from ${specHtmlPath})`);
 
   const meta = { generated: new Date().toISOString(), engines: {} };
+  if (opts.specBlob != null) meta.specBlob = opts.specBlob;
   // clauseId -> engineKey -> link entries
   const clauseData = new Map();
 

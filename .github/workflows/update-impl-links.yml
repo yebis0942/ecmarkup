@@ -13,7 +13,6 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  actions: write # for updating the IMPL_LINKS_SPEC_BLOB repo variable
 
 jobs:
   update:
@@ -35,22 +34,26 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           sha=$(gh api repos/tc39/ecma262/git/trees/main --jq '.tree[] | select(.path=="spec.html") | .sha')
-          echo "spec.html blob: $sha (recorded: '${{ vars.IMPL_LINKS_SPEC_BLOB }}')"
+          echo "spec.html blob: $sha"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
+      # The spec blob this data was built against lives in impl-links.json
+      # itself (meta.specBlob) — GITHUB_TOKEN cannot write Actions variables.
+      # Insignificant spec drift therefore re-triggers regeneration weekly
+      # until a significant change lands; that costs a few CI minutes, not PRs.
       - name: Check whether any engine tag or the spec changed
         id: check
         env:
-          RECORDED_SPEC_BLOB: ${{ vars.IMPL_LINKS_SPEC_BLOB }}
           CURRENT_SPEC_BLOB: ${{ steps.spec.outputs.sha }}
         run: |
           changed=$(node -e '
             const fs = require("fs");
             const latest = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/latest-tags.json", "utf8"));
-            let current = {};
-            try { current = JSON.parse(fs.readFileSync("impl-links.json", "utf8")).meta.engines; } catch {}
+            let meta = {};
+            try { meta = JSON.parse(fs.readFileSync("impl-links.json", "utf8")).meta; } catch {}
+            const current = meta.engines ?? {};
             const tagsChanged = Object.keys(latest).some(k => latest[k] !== current[k]?.tag);
-            const specChanged = process.env.RECORDED_SPEC_BLOB !== process.env.CURRENT_SPEC_BLOB;
+            const specChanged = meta.specBlob !== process.env.CURRENT_SPEC_BLOB;
             console.log(tagsChanged || specChanged ? "true" : "false");
           ')
           echo "changed=$changed"
@@ -67,7 +70,8 @@ jobs:
         if: steps.check.outputs.changed == 'true'
         run: |
           cp impl-links.json "$RUNNER_TEMP/prev.json"
-          node scripts/impl-links/build.mjs ${{ steps.clone.outputs.roots }}
+          node scripts/impl-links/build.mjs ${{ steps.clone.outputs.roots }} \
+            --spec-blob '${{ steps.spec.outputs.sha }}'
 
       - name: Discard timestamp-only regenerations
         if: steps.check.outputs.changed == 'true'
@@ -112,12 +116,3 @@ jobs:
           commit-message: update impl-links.json to latest engine tags / spec
           title: Update impl-links data
           body-path: ${{ runner.temp }}/pr-body.md
-
-      # Runs only when every previous step succeeded: a failed guard or link
-      # check leaves the recorded sha stale so the next scheduled run retries.
-      - name: Record processed spec blob sha
-        if: steps.spec.outputs.sha != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh variable set IMPL_LINKS_SPEC_BLOB --repo "$GITHUB_REPOSITORY" --body '${{ steps.spec.outputs.sha }}'

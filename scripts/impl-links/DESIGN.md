@@ -207,9 +207,12 @@ Same idioms as `versionCompare.js` (plain script, `'use strict'`, wired via
 
 Weekly cron + manual dispatch: `resolve-tag.mjs` picks the latest release tag
 per engine via `git ls-remote --tags` (patterns from `config.mjs`), and the
-tc39/ecma262 `spec.html` blob sha is compared against the repo Actions
-variable `IMPL_LINKS_SPEC_BLOB` (updated after each successful run), so both
-engine releases and spec drift (new/renamed clauses) trigger a refresh. When
+tc39/ecma262 `spec.html` blob sha is compared against `meta.specBlob` in the
+committed `impl-links.json` (written by `build.mjs --spec-blob`; Actions
+variables are not writable with `GITHUB_TOKEN`), so both engine releases and
+spec drift (new/renamed clauses) trigger a refresh. Insignificant spec drift
+re-triggers regeneration weekly until a significant change lands — a few CI
+minutes, no PR spam. When
 either changed, `ci-checkout.mjs` makes blobless clones at the tags
 (sparse-checkout limited to each engine's `sparsePaths`) and the workflow
 reruns `build.mjs --root …`. Before opening a PR it:
@@ -224,8 +227,8 @@ reruns `build.mjs --root …`. Before opening a PR it:
 - puts a per-engine stats table (`check-regression.mjs --report`) in the PR
   body.
 
-The workflow needs `actions: write` (for the variable) and the repo setting
-"Allow GitHub Actions to create and approve pull requests".
+The workflow needs the repo setting "Allow GitHub Actions to create and
+approve pull requests".
 
 ## Verification
 
