@@ -62,7 +62,9 @@ function parseArgs(argv: string[]): Args {
   }
 
   if (!outDir) {
-    console.error('Usage: npx tsx scripts/generate-version-bar-data.ts --out-dir <dir> [--config <config.json>] [--spec-html <spec.html>]');
+    console.error(
+      'Usage: npx tsx scripts/generate-version-bar-data.ts --out-dir <dir> [--config <config.json>] [--spec-html <spec.html>]',
+    );
     process.exit(1);
   }
 
@@ -348,7 +350,10 @@ function resolveId(id: string, oldIdMap: Map<string, string>): string {
  * `resolved.has(id)` is therefore equivalent to the old `found` test, and `resolved.get(id)`
  * to the old content selection.
  */
-function buildResolvedIndex(sections: Map<string, string>, oldIdMap: Map<string, string>): Map<string, string> {
+function buildResolvedIndex(
+  sections: Map<string, string>,
+  oldIdMap: Map<string, string>,
+): Map<string, string> {
   const resolved = new Map<string, string>();
   // Pass 1: first (document-order) section per resolved id — the fallback branch.
   for (const [id, content] of sections) {
@@ -406,7 +411,10 @@ async function main(args: Args) {
   // and per-section loops below are O(n) overall instead of O(n²).
   const versionResolved = new Map<string, Map<string, string>>();
   for (const version of config.versions) {
-    versionResolved.set(version.key, buildResolvedIndex(versionSections.get(version.key)!, oldIdMap));
+    versionResolved.set(
+      version.key,
+      buildResolvedIndex(versionSections.get(version.key)!, oldIdMap),
+    );
   }
 
   // Collect all section IDs (resolved to current IDs)
@@ -446,7 +454,9 @@ async function main(args: Args) {
   // Write manifest
   const manifestPath = path.join(outDir, 'version-bar-manifest.json');
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8');
-  console.log(`Wrote manifest: ${manifestPath} (${Object.keys(manifest.sections).length} sections)`);
+  console.log(
+    `Wrote manifest: ${manifestPath} (${Object.keys(manifest.sections).length} sections)`,
+  );
 
   // Write per-section detail files
   let sectionFileCount = 0;

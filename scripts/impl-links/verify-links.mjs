@@ -59,7 +59,8 @@ async function main() {
   const args = process.argv.slice(2);
   const samplesArg = args.indexOf('--samples');
   const samples = samplesArg !== -1 ? Number(args[samplesArg + 1]) : DEFAULT_SAMPLES;
-  const dataPath = args.find(a => !a.startsWith('--') && a !== String(samples)) ?? 'impl-links.json';
+  const dataPath =
+    args.find(a => !a.startsWith('--') && a !== String(samples)) ?? 'impl-links.json';
   const data = JSON.parse(readFileSync(dataPath, 'utf8'));
 
   const failures = [];

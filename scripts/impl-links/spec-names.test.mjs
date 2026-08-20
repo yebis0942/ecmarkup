@@ -8,7 +8,10 @@ import { loadSpecNames, nameToKey } from './spec-names.mjs';
 
 describe('nameToKey', () => {
   it('strips a trailing parameter list', () => {
-    assert.strictEqual(nameToKey('Array.prototype.map ( _callback_ [ , _thisArg_ ] )'), 'arrayprototype.map');
+    assert.strictEqual(
+      nameToKey('Array.prototype.map ( _callback_ [ , _thisArg_ ] )'),
+      'arrayprototype.map',
+    );
     assert.strictEqual(nameToKey('parseInt ( _string_, _radix_ )'), 'parseint');
   });
 
@@ -40,7 +43,10 @@ describe('nameToKey', () => {
       nameToKey('%GeneratorPrototype%.next ( _value_ )'),
       nameToKey('Generator.prototype.next ( _value_ )'),
     );
-    assert.strictEqual(nameToKey('Generator.prototype.next ( _value_ )'), 'generatorprototype.next');
+    assert.strictEqual(
+      nameToKey('Generator.prototype.next ( _value_ )'),
+      'generatorprototype.next',
+    );
   });
 
   it('strips ecmarkup value markup', () => {
