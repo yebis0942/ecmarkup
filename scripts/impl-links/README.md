@@ -60,12 +60,17 @@ names) go to stdout.
 ## CI
 
 `.github/workflows/update-impl-links.yml` (weekly cron + manual dispatch)
-resolves the latest release tags via `resolve-tag.mjs`; when any tag differs
-from the one recorded in `impl-links.json`, it makes blobless (sparse where
-configured) clones at the new tags via `ci-checkout.mjs`, reruns
-`build.mjs --root …`, and opens a PR with the regenerated JSON
+resolves the latest release tags via `resolve-tag.mjs` and the current
+tc39/ecma262 `spec.html` blob sha; when a tag or the spec changed, it makes
+blobless (sparse where configured) clones at the new tags via
+`ci-checkout.mjs`, reruns `build.mjs --root …`, and opens a PR with the
+regenerated JSON. Timestamp-only diffs are discarded (`diff-significant.mjs`),
+matched-count craters fail the run (`check-regression.mjs`, `force` input to
+bypass), sampled links are live-checked (`verify-links.mjs`), and the PR body
+carries a per-engine stats table. See DESIGN.md for details.
 ([create-pull-request](https://github.com/peter-evans/create-pull-request)
-requires "Allow GitHub Actions to create pull requests" in the repo settings).
+requires "Allow GitHub Actions to create pull requests" in the repo settings;
+the variable update needs `actions: write`.)
 
 ## Serving the data
 

@@ -3,11 +3,17 @@ name: update-impl-links
 on:
   schedule:
     - cron: '23 3 * * 1' # weekly, Monday 03:23 UTC
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Regenerate and open a PR even if the regression guard fails'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
   pull-requests: write
+  actions: write # for updating the IMPL_LINKS_SPEC_BLOB repo variable
 
 jobs:
   update:
@@ -16,22 +22,36 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
 
       - name: Resolve latest engine tags
         run: |
           node scripts/impl-links/resolve-tag.mjs --json > "$RUNNER_TEMP/latest-tags.json"
           cat "$RUNNER_TEMP/latest-tags.json"
 
-      - name: Check whether any engine tag changed
+      - name: Resolve ecma262 spec.html blob sha
+        id: spec
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha=$(gh api repos/tc39/ecma262/git/trees/main --jq '.tree[] | select(.path=="spec.html") | .sha')
+          echo "spec.html blob: $sha (recorded: '${{ vars.IMPL_LINKS_SPEC_BLOB }}')"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether any engine tag or the spec changed
         id: check
+        env:
+          RECORDED_SPEC_BLOB: ${{ vars.IMPL_LINKS_SPEC_BLOB }}
+          CURRENT_SPEC_BLOB: ${{ steps.spec.outputs.sha }}
         run: |
           changed=$(node -e '
             const fs = require("fs");
             const latest = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/latest-tags.json", "utf8"));
             let current = {};
             try { current = JSON.parse(fs.readFileSync("impl-links.json", "utf8")).meta.engines; } catch {}
-            console.log(Object.keys(latest).some(k => latest[k] !== current[k]?.tag) ? "true" : "false");
+            const tagsChanged = Object.keys(latest).some(k => latest[k] !== current[k]?.tag);
+            const specChanged = process.env.RECORDED_SPEC_BLOB !== process.env.CURRENT_SPEC_BLOB;
+            console.log(tagsChanged || specChanged ? "true" : "false");
           ')
           echo "changed=$changed"
           echo "changed=$changed" >> "$GITHUB_OUTPUT"
@@ -45,16 +65,59 @@ jobs:
 
       - name: Regenerate impl-links.json
         if: steps.check.outputs.changed == 'true'
-        run: node scripts/impl-links/build.mjs ${{ steps.clone.outputs.roots }}
+        run: |
+          cp impl-links.json "$RUNNER_TEMP/prev.json"
+          node scripts/impl-links/build.mjs ${{ steps.clone.outputs.roots }}
+
+      - name: Discard timestamp-only regenerations
+        if: steps.check.outputs.changed == 'true'
+        id: significant
+        run: |
+          significant=$(node scripts/impl-links/diff-significant.mjs "$RUNNER_TEMP/prev.json" impl-links.json)
+          echo "significant=$significant"
+          if [ "$significant" != "true" ]; then
+            git checkout -- impl-links.json impl-links-index.json
+          fi
+          echo "significant=$significant" >> "$GITHUB_OUTPUT"
+
+      - name: Guard against extractor regressions
+        if: steps.check.outputs.changed == 'true' && steps.significant.outputs.significant == 'true' && inputs.force != true
+        run: |
+          node scripts/impl-links/check-regression.mjs "$RUNNER_TEMP/prev.json" impl-links.json
+
+      - name: Verify sampled links resolve
+        if: steps.check.outputs.changed == 'true' && steps.significant.outputs.significant == 'true'
+        run: node scripts/impl-links/verify-links.mjs
+
+      - name: Write PR body with per-engine stats
+        if: steps.check.outputs.changed == 'true' && steps.significant.outputs.significant == 'true'
+        run: |
+          {
+            echo 'Automated regeneration of impl-links.json: an engine published a new'
+            echo 'release tag and/or tc39/ecma262 spec.html changed. See scripts/impl-links/DESIGN.md.'
+            echo
+            node scripts/impl-links/check-regression.mjs "$RUNNER_TEMP/prev.json" impl-links.json \
+              --report --spec-rev='${{ steps.spec.outputs.sha }}' || true
+          } > "$RUNNER_TEMP/pr-body.md"
+          cat "$RUNNER_TEMP/pr-body.md"
 
       - name: Create pull request
-        if: steps.check.outputs.changed == 'true'
+        if: steps.check.outputs.changed == 'true' && steps.significant.outputs.significant == 'true'
         uses: peter-evans/create-pull-request@v7
         with:
-          add-paths: impl-links.json
+          add-paths: |
+            impl-links.json
+            impl-links-index.json
           branch: update-impl-links
-          commit-message: update impl-links.json to latest engine tags
-          title: Update impl-links.json to latest engine tags
-          body: >-
-            Automated regeneration of impl-links.json: at least one engine
-            published a new release tag. See scripts/impl-links/DESIGN.md.
+          commit-message: update impl-links.json to latest engine tags / spec
+          title: Update impl-links data
+          body-path: ${{ runner.temp }}/pr-body.md
+
+      # Runs only when every previous step succeeded: a failed guard or link
+      # check leaves the recorded sha stale so the next scheduled run retries.
+      - name: Record processed spec blob sha
+        if: steps.spec.outputs.sha != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh variable set IMPL_LINKS_SPEC_BLOB --repo "$GITHUB_REPOSITORY" --body '${{ steps.spec.outputs.sha }}'

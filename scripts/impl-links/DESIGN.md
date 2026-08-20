@@ -206,10 +206,26 @@ Same idioms as `versionCompare.js` (plain script, `'use strict'`, wired via
 ## CI refresh (`.github/workflows/update-impl-links.yml`)
 
 Weekly cron + manual dispatch: `resolve-tag.mjs` picks the latest release tag
-per engine via `git ls-remote --tags` (patterns from `config.mjs`); if any tag
-differs from `impl-links.json` meta, `ci-checkout.mjs` makes blobless clones
-at those tags (sparse-checkout limited to each engine's `sparsePaths`), the
-workflow reruns `build.mjs --root …` and opens a PR with the regenerated JSON.
+per engine via `git ls-remote --tags` (patterns from `config.mjs`), and the
+tc39/ecma262 `spec.html` blob sha is compared against the repo Actions
+variable `IMPL_LINKS_SPEC_BLOB` (updated after each successful run), so both
+engine releases and spec drift (new/renamed clauses) trigger a refresh. When
+either changed, `ci-checkout.mjs` makes blobless clones at the tags
+(sparse-checkout limited to each engine's `sparsePaths`) and the workflow
+reruns `build.mjs --root …`. Before opening a PR it:
+
+- discards timestamp-only regenerations (`diff-significant.mjs` compares
+  everything except `meta.generated`, which therefore means "last content
+  change");
+- fails if any engine's matched-clause count fell below 80% of the previous
+  data (`check-regression.mjs` — extractor breakage detection; bypass with
+  the `force` dispatch input);
+- fails if sampled links no longer resolve (`verify-links.mjs`);
+- puts a per-engine stats table (`check-regression.mjs --report`) in the PR
+  body.
+
+The workflow needs `actions: write` (for the variable) and the repo setting
+"Allow GitHub Actions to create and approve pull requests".
 
 ## Verification
 
