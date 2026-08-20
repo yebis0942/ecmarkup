@@ -66,6 +66,7 @@
     const segments = versionBar.querySelectorAll('.version-segment.selected');
     for (let i = 0; i < segments.length; i++) {
       segments[i].classList.remove('selected');
+      segments[i].setAttribute('aria-pressed', 'false');
     }
   }
 
@@ -90,6 +91,7 @@
 
     clearSelection(versionBar);
     segment.classList.add('selected');
+    segment.setAttribute('aria-pressed', 'true');
 
     // Bump the per-bar generation token. Each click gets a unique token so that
     // async fetch resolutions from an earlier (superseded) click can be discarded,
@@ -107,8 +109,10 @@
     const labelEl = document.createElement('span');
     labelEl.textContent = label;
     const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
     closeBtn.className = 'version-viewer-close';
     closeBtn.innerHTML = '&times;';
+    closeBtn.setAttribute('aria-label', 'Close');
     closeBtn.addEventListener('click', () => {
       clearSelection(versionBar);
       removeViewer(versionBar);
@@ -148,6 +152,19 @@
     for (let i = 0; i < bars.length; i++) {
       bars[i].addEventListener('click', handleSegmentClick);
     }
+    if (bars.length === 0) return;
+
+    // Escape closes the viewer whose bar contains the currently selected
+    // segment, returning focus to that segment.
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'Escape') return;
+      const selected = document.querySelector('.version-bar .version-segment.selected');
+      if (!selected) return;
+      const versionBar = selected.closest('.version-bar');
+      clearSelection(versionBar);
+      removeViewer(versionBar);
+      selected.focus();
+    });
   }
 
   // Run immediately if the DOM is already parsed (e.g. deferred or dynamically

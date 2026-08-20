@@ -27,6 +27,7 @@ let definedVersions = [
 
 let versionCompareState = {
   openPanel: null, // the currently open panel element, or null
+  openButton: null, // the button that opened it (for focus return / aria)
   fromIndex: definedVersions.length - 2, // default: one before latest
   toIndex: definedVersions.length - 1, // default: latest
   selectingEndpoint: 'from', // 'from' or 'to'
@@ -83,9 +84,12 @@ function initVersionCompare() {
     if (h1.parentNode !== clause) continue;
 
     let btn = document.createElement('button');
+    btn.type = 'button';
     btn.className = 'version-compare-btn';
     btn.textContent = 'compare';
     btn.title = 'Compare versions of this section';
+    btn.setAttribute('aria-haspopup', 'true');
+    btn.setAttribute('aria-expanded', 'false');
     btn.addEventListener('click', e => {
       e.preventDefault();
       e.stopPropagation();
@@ -104,6 +108,15 @@ function initVersionCompare() {
       closePanel();
     }
   });
+
+  // Close panel on Escape, returning focus to the button that opened it
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && versionCompareState.openPanel) {
+      let btn = versionCompareState.openButton;
+      closePanel();
+      if (btn) btn.focus();
+    }
+  });
 }
 
 function togglePanel(btn, sectionId) {
@@ -120,6 +133,10 @@ function closePanel() {
     versionCompareState.openPanel.remove();
     versionCompareState.openPanel = null;
   }
+  if (versionCompareState.openButton) {
+    versionCompareState.openButton.setAttribute('aria-expanded', 'false');
+    versionCompareState.openButton = null;
+  }
 }
 
 function openPanel(btn, sectionId) {
@@ -132,6 +149,7 @@ function openPanel(btn, sectionId) {
   endpoints.className = 'version-compare-endpoints';
 
   let fromBtn = document.createElement('button');
+  fromBtn.type = 'button';
   fromBtn.className = 'version-compare-endpoint';
   if (versionCompareState.selectingEndpoint === 'from') {
     fromBtn.classList.add('active');
@@ -143,6 +161,7 @@ function openPanel(btn, sectionId) {
   });
 
   let toBtn = document.createElement('button');
+  toBtn.type = 'button';
   toBtn.className = 'version-compare-endpoint';
   if (versionCompareState.selectingEndpoint === 'to') {
     toBtn.classList.add('active');
@@ -163,6 +182,7 @@ function openPanel(btn, sectionId) {
 
   for (let v = 0; v < definedVersions.length; v++) {
     let cell = document.createElement('button');
+    cell.type = 'button';
     cell.className = 'version-compare-cell';
     cell.textContent = definedVersions[v].label;
     cell.dataset.index = v;
@@ -187,6 +207,7 @@ function openPanel(btn, sectionId) {
 
   // Open button
   let openBtn = document.createElement('button');
+  openBtn.type = 'button';
   openBtn.className = 'version-compare-open-btn';
   openBtn.addEventListener('click', e => {
     e.stopPropagation();
@@ -205,9 +226,11 @@ function openPanel(btn, sectionId) {
 
   // Close button
   let closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
   closeBtn.className = 'version-compare-close-btn';
   closeBtn.textContent = '\u2716';
   closeBtn.title = 'Close';
+  closeBtn.setAttribute('aria-label', 'Close');
   closeBtn.addEventListener('click', e => {
     e.stopPropagation();
     closePanel();
@@ -221,7 +244,9 @@ function openPanel(btn, sectionId) {
   btn.parentNode.style.position = 'relative';
   btn.parentNode.appendChild(panel);
 
+  btn.setAttribute('aria-expanded', 'true');
   versionCompareState.openPanel = panel;
+  versionCompareState.openButton = btn;
 }
 
 function updatePanel(panel) {
@@ -232,8 +257,10 @@ function updatePanel(panel) {
 
   fromBtn.textContent = 'From: ' + definedVersions[versionCompareState.fromIndex].label;
   fromBtn.classList.toggle('active', versionCompareState.selectingEndpoint === 'from');
+  fromBtn.setAttribute('aria-pressed', versionCompareState.selectingEndpoint === 'from');
   toBtn.textContent = 'To: ' + definedVersions[versionCompareState.toIndex].label;
   toBtn.classList.toggle('active', versionCompareState.selectingEndpoint === 'to');
+  toBtn.setAttribute('aria-pressed', versionCompareState.selectingEndpoint === 'to');
 
   // Update version cells
   let cells = panel.querySelectorAll('.version-compare-cell');
@@ -246,6 +273,10 @@ function updatePanel(panel) {
     if (idx === versionCompareState.toIndex) {
       cells[i].classList.add('selected-to');
     }
+    cells[i].setAttribute(
+      'aria-pressed',
+      idx === versionCompareState.fromIndex || idx === versionCompareState.toIndex,
+    );
     let lo = Math.min(versionCompareState.fromIndex, versionCompareState.toIndex);
     let hi = Math.max(versionCompareState.fromIndex, versionCompareState.toIndex);
     if (idx > lo && idx < hi) {

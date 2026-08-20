@@ -1842,6 +1842,7 @@ let definedVersions = [
 
 let versionCompareState = {
   openPanel: null, // the currently open panel element, or null
+  openButton: null, // the button that opened it (for focus return / aria)
   fromIndex: definedVersions.length - 2, // default: one before latest
   toIndex: definedVersions.length - 1, // default: latest
   selectingEndpoint: 'from', // 'from' or 'to'
@@ -1898,9 +1899,12 @@ function initVersionCompare() {
     if (h1.parentNode !== clause) continue;
 
     let btn = document.createElement('button');
+    btn.type = 'button';
     btn.className = 'version-compare-btn';
     btn.textContent = 'compare';
     btn.title = 'Compare versions of this section';
+    btn.setAttribute('aria-haspopup', 'true');
+    btn.setAttribute('aria-expanded', 'false');
     btn.addEventListener('click', e => {
       e.preventDefault();
       e.stopPropagation();
@@ -1919,6 +1923,15 @@ function initVersionCompare() {
       closePanel();
     }
   });
+
+  // Close panel on Escape, returning focus to the button that opened it
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && versionCompareState.openPanel) {
+      let btn = versionCompareState.openButton;
+      closePanel();
+      if (btn) btn.focus();
+    }
+  });
 }
 
 function togglePanel(btn, sectionId) {
@@ -1935,6 +1948,10 @@ function closePanel() {
     versionCompareState.openPanel.remove();
     versionCompareState.openPanel = null;
   }
+  if (versionCompareState.openButton) {
+    versionCompareState.openButton.setAttribute('aria-expanded', 'false');
+    versionCompareState.openButton = null;
+  }
 }
 
 function openPanel(btn, sectionId) {
@@ -1947,6 +1964,7 @@ function openPanel(btn, sectionId) {
   endpoints.className = 'version-compare-endpoints';
 
   let fromBtn = document.createElement('button');
+  fromBtn.type = 'button';
   fromBtn.className = 'version-compare-endpoint';
   if (versionCompareState.selectingEndpoint === 'from') {
     fromBtn.classList.add('active');
@@ -1958,6 +1976,7 @@ function openPanel(btn, sectionId) {
   });
 
   let toBtn = document.createElement('button');
+  toBtn.type = 'button';
   toBtn.className = 'version-compare-endpoint';
   if (versionCompareState.selectingEndpoint === 'to') {
     toBtn.classList.add('active');
@@ -1978,6 +1997,7 @@ function openPanel(btn, sectionId) {
 
   for (let v = 0; v < definedVersions.length; v++) {
     let cell = document.createElement('button');
+    cell.type = 'button';
     cell.className = 'version-compare-cell';
     cell.textContent = definedVersions[v].label;
     cell.dataset.index = v;
@@ -2002,6 +2022,7 @@ function openPanel(btn, sectionId) {
 
   // Open button
   let openBtn = document.createElement('button');
+  openBtn.type = 'button';
   openBtn.className = 'version-compare-open-btn';
   openBtn.addEventListener('click', e => {
     e.stopPropagation();
@@ -2020,9 +2041,11 @@ function openPanel(btn, sectionId) {
 
   // Close button
   let closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
   closeBtn.className = 'version-compare-close-btn';
   closeBtn.textContent = '\u2716';
   closeBtn.title = 'Close';
+  closeBtn.setAttribute('aria-label', 'Close');
   closeBtn.addEventListener('click', e => {
     e.stopPropagation();
     closePanel();
@@ -2036,7 +2059,9 @@ function openPanel(btn, sectionId) {
   btn.parentNode.style.position = 'relative';
   btn.parentNode.appendChild(panel);
 
+  btn.setAttribute('aria-expanded', 'true');
   versionCompareState.openPanel = panel;
+  versionCompareState.openButton = btn;
 }
 
 function updatePanel(panel) {
@@ -2047,8 +2072,10 @@ function updatePanel(panel) {
 
   fromBtn.textContent = 'From: ' + definedVersions[versionCompareState.fromIndex].label;
   fromBtn.classList.toggle('active', versionCompareState.selectingEndpoint === 'from');
+  fromBtn.setAttribute('aria-pressed', versionCompareState.selectingEndpoint === 'from');
   toBtn.textContent = 'To: ' + definedVersions[versionCompareState.toIndex].label;
   toBtn.classList.toggle('active', versionCompareState.selectingEndpoint === 'to');
+  toBtn.setAttribute('aria-pressed', versionCompareState.selectingEndpoint === 'to');
 
   // Update version cells
   let cells = panel.querySelectorAll('.version-compare-cell');
@@ -2061,6 +2088,10 @@ function updatePanel(panel) {
     if (idx === versionCompareState.toIndex) {
       cells[i].classList.add('selected-to');
     }
+    cells[i].setAttribute(
+      'aria-pressed',
+      idx === versionCompareState.fromIndex || idx === versionCompareState.toIndex,
+    );
     let lo = Math.min(versionCompareState.fromIndex, versionCompareState.toIndex);
     let hi = Math.max(versionCompareState.fromIndex, versionCompareState.toIndex);
     if (idx > lo && idx < hi) {
@@ -2083,37 +2114,69 @@ document.addEventListener('DOMContentLoaded', initVersionCompare);
 
 // Implementation links widget: adds a per-clause button that opens a panel of
 // links to that clause's implementation in various JS engines.
-// Data is lazily fetched from impl-links.json (generated by scripts/impl-links/).
+// A small index (impl-links-index.json, clause ids only) is fetched eagerly to
+// know where to attach buttons; the full link data (impl-links.json, generated
+// by scripts/impl-links/) is only fetched when a button is first clicked.
 
 let implLinksEngineOrder = ['v8', 'jsc', 'sm', 'qjs'];
 
 let implLinksState = {
   openPanel: null, // the currently open panel element, or null
+  openButton: null, // the button that opened it (for focus return / aria)
+  dataPromise: null, // promise for the full impl-links.json, started on first click
 };
+
+function implLinksDataUrl() {
+  return window.implLinksDataUrl || 'impl-links.json';
+}
+
+function implLinksIndexUrl() {
+  // The index lives next to the data file, whatever directory that is.
+  let dataUrl = implLinksDataUrl();
+  return dataUrl.slice(0, dataUrl.lastIndexOf('/') + 1) + 'impl-links-index.json';
+}
 
 function initImplLinks() {
   if (typeof fetch !== 'function') return;
-  let dataUrl = window.implLinksDataUrl || 'impl-links.json';
   let fetched;
   try {
-    fetched = fetch(dataUrl);
+    fetched = fetch(implLinksIndexUrl());
   } catch (e) {
     return;
   }
   fetched
     .then(response => (response.ok ? response.json() : null))
-    .then(data => {
-      if (data != null && data.meta != null && data.meta.engines != null && data.clauses != null) {
-        setupImplLinks(data);
+    .then(index => {
+      if (index != null && Array.isArray(index.ids)) {
+        setupImplLinks(index.ids);
       }
     })
     .catch(() => {
-      // Data unavailable (e.g. file:// or missing/invalid impl-links.json): do nothing.
+      // Index unavailable (e.g. file:// or missing/invalid file): do nothing.
     });
 }
 
-function setupImplLinks(data) {
-  let ids = Object.keys(data.clauses);
+function fetchImplLinksData() {
+  if (implLinksState.dataPromise == null) {
+    implLinksState.dataPromise = fetch(implLinksDataUrl())
+      .then(response => (response.ok ? response.json() : null))
+      .then(data => {
+        if (
+          data != null &&
+          data.meta != null &&
+          data.meta.engines != null &&
+          data.clauses != null
+        ) {
+          return data;
+        }
+        return null;
+      })
+      .catch(() => null);
+  }
+  return implLinksState.dataPromise;
+}
+
+function setupImplLinks(ids) {
   let attached = false;
   for (let i = 0; i < ids.length; i++) {
     let id = ids[i];
@@ -2126,13 +2189,16 @@ function setupImplLinks(data) {
     if (h1.parentNode !== clause) continue;
 
     let btn = document.createElement('button');
+    btn.type = 'button';
     btn.className = 'impl-links-btn';
     btn.textContent = 'impl';
     btn.title = 'Engine implementations of this section';
+    btn.setAttribute('aria-haspopup', 'true');
+    btn.setAttribute('aria-expanded', 'false');
     btn.addEventListener('click', e => {
       e.preventDefault();
       e.stopPropagation();
-      toggleImplLinksPanel(btn, id, data);
+      toggleImplLinksPanel(btn, id);
     });
     h1.appendChild(btn);
     attached = true;
@@ -2149,21 +2215,34 @@ function setupImplLinks(data) {
       closeImplLinksPanel();
     }
   });
+
+  // Close panel on Escape, returning focus to the button that opened it
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && implLinksState.openPanel) {
+      let btn = implLinksState.openButton;
+      closeImplLinksPanel();
+      if (btn) btn.focus();
+    }
+  });
 }
 
-function toggleImplLinksPanel(btn, sectionId, data) {
+function toggleImplLinksPanel(btn, sectionId) {
   if (implLinksState.openPanel && implLinksState.openPanel._sectionId === sectionId) {
     closeImplLinksPanel();
     return;
   }
   closeImplLinksPanel();
-  openImplLinksPanel(btn, sectionId, data);
+  openImplLinksPanel(btn, sectionId);
 }
 
 function closeImplLinksPanel() {
   if (implLinksState.openPanel) {
     implLinksState.openPanel.remove();
     implLinksState.openPanel = null;
+  }
+  if (implLinksState.openButton) {
+    implLinksState.openButton.setAttribute('aria-expanded', 'false');
+    implLinksState.openButton = null;
   }
 }
 
@@ -2175,11 +2254,37 @@ function implLinkUrl(engine, link, tplKey) {
   return template.replace('{path}', encodeURI(link.p)).replace('{line}', link.l);
 }
 
-function openImplLinksPanel(btn, sectionId, data) {
+function openImplLinksPanel(btn, sectionId) {
   let panel = document.createElement('div');
   panel.className = 'impl-links-panel';
   panel._sectionId = sectionId;
 
+  let status = document.createElement('div');
+  status.className = 'impl-links-status';
+  status.textContent = 'loading…';
+  panel.appendChild(status);
+
+  // Position relative to button
+  btn.parentNode.style.position = 'relative';
+  btn.parentNode.appendChild(panel);
+
+  btn.setAttribute('aria-expanded', 'true');
+  implLinksState.openPanel = panel;
+  implLinksState.openButton = btn;
+
+  fetchImplLinksData().then(data => {
+    // The panel may have been closed (or replaced) while the data loaded.
+    if (implLinksState.openPanel !== panel) return;
+    if (data == null || data.clauses[sectionId] == null) {
+      status.textContent = 'failed to load implementation links';
+      return;
+    }
+    status.remove();
+    renderImplLinksPanel(panel, sectionId, data);
+  });
+}
+
+function renderImplLinksPanel(panel, sectionId, data) {
   let clauseData = data.clauses[sectionId];
   for (let i = 0; i < implLinksEngineOrder.length; i++) {
     let engineKey = implLinksEngineOrder[i];
@@ -2234,12 +2339,6 @@ function openImplLinksPanel(btn, sectionId, data) {
 
     panel.appendChild(row);
   }
-
-  // Position relative to button
-  btn.parentNode.style.position = 'relative';
-  btn.parentNode.appendChild(panel);
-
-  implLinksState.openPanel = panel;
 }
 
 document.addEventListener('DOMContentLoaded', initImplLinks);
@@ -4139,6 +4238,12 @@ li.menu-search-result[data-kind]::before {
   margin-left: -6px;
 }
 
+.impl-links-status {
+  color: var(--foreground-color);
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
 /* Version Bar */
 .version-bar {
   display: flex;
@@ -4151,6 +4256,7 @@ li.menu-search-result[data-kind]::before {
 .version-segment {
   padding: 2px 6px;
   font-size: 11px;
+  font-family: inherit;
   border: 1px solid var(--vb-border);
   border-radius: 3px;
   cursor: pointer;

@@ -22,6 +22,7 @@ import { loadSpecNames, nameToKey } from './spec-names.mjs';
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, '..', '..');
 const OUTPUT_PATH = join(REPO_ROOT, 'impl-links.json');
+const INDEX_PATH = join(REPO_ROOT, 'impl-links-index.json');
 const EXTRACT_DIR = process.env.IMPL_LINKS_EXTRACT_DIR || join(SCRIPT_DIR, 'extract');
 const LIST_LIMIT = 20;
 
@@ -174,6 +175,18 @@ async function main() {
 
   writeFileSync(OUTPUT_PATH, JSON.stringify({ meta, clauses }, null, 2) + '\n');
   console.log(`wrote ${OUTPUT_PATH} (${Object.keys(clauses).length} clauses)`);
+
+  // Small companion index: just enough for the widget to place its buttons
+  // without downloading the full link data (which it fetches on first click).
+  const index = {
+    meta: {
+      generated: meta.generated,
+      engines: Object.fromEntries(Object.entries(meta.engines).map(([k, e]) => [k, e.tag])),
+    },
+    ids: Object.keys(clauses),
+  };
+  writeFileSync(INDEX_PATH, JSON.stringify(index, null, 2) + '\n');
+  console.log(`wrote ${INDEX_PATH}`);
 }
 
 main().catch(err => {

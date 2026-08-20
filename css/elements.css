@@ -1891,6 +1891,12 @@ li.menu-search-result[data-kind]::before {
   margin-left: -6px;
 }
 
+.impl-links-status {
+  color: var(--foreground-color);
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
 /* Version Bar */
 .version-bar {
   display: flex;
@@ -1903,6 +1909,7 @@ li.menu-search-result[data-kind]::before {
 .version-segment {
   padding: 2px 6px;
   font-size: 11px;
+  font-family: inherit;
   border: 1px solid var(--vb-border);
   border-radius: 3px;
   cursor: pointer;

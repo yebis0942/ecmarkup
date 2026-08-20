@@ -114,6 +114,11 @@ Unmatched extractor records are dropped by the driver and listed in stats.
 Engine display order is fixed: v8, jsc, sm, qjs. Clause keys sorted for stable
 diffs. Template indirection keeps the file small (paths+lines, not full URLs).
 
+The driver also writes `impl-links-index.json` next to it — a small companion
+file (`{ meta: { generated, engines: { key: tag } }, ids: [clauseId…] }`) that
+the widget fetches eagerly to know where to place its buttons; the full file
+above is only downloaded on the first button click.
+
 URL templates per engine (finalized after live verification, 2026-07):
 
 - v8: Chromium Code Search
@@ -184,9 +189,12 @@ constructors, `length`/data properties, and Annex B are out of scope.
 Same idioms as `versionCompare.js` (plain script, `'use strict'`, wired via
 `jsDependencies` in `src/Spec.ts`).
 
-- On DOMContentLoaded: `fetch(window.implLinksDataUrl || 'impl-links.json')`;
-  any failure (including `file://`) → silent no-op.
-- For each `clauses` key with a matching `emu-clause[id]`/`emu-annex[id]` in
+- On DOMContentLoaded: fetch `impl-links-index.json` (resolved from the
+  directory of `window.implLinksDataUrl || 'impl-links.json'`); any failure
+  (including `file://`) → silent no-op. The full data file is fetched at most
+  once, on the first button click (panels show a loading/error status until
+  it arrives).
+- For each index id with a matching `emu-clause[id]`/`emu-annex[id]` in
   the document: append an `impl` button to the clause's direct-child `h1`.
 - Click toggles a panel (one open at a time; outside click closes): one row
   per engine in fixed order — engine label + `<a target="_blank"

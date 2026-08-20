@@ -2,9 +2,11 @@
 
 Generates `impl-links.json` (repo root), mapping spec clause ids
 (e.g. `sec-array.prototype.map`) to implementation permalinks in four JS
-engines (V8, JavaScriptCore, SpiderMonkey, QuickJS). The `js/implLinks.js`
-widget loads this file at runtime. See [DESIGN.md](./DESIGN.md) for the full
-design.
+engines (V8, JavaScriptCore, SpiderMonkey, QuickJS), plus a small companion
+`impl-links-index.json` (clause ids and engine tags only). The
+`js/implLinks.js` widget fetches the index eagerly to place its buttons and
+only downloads the full data on the first click. See [DESIGN.md](./DESIGN.md)
+for the full design.
 
 ## Setup
 
@@ -67,7 +69,11 @@ requires "Allow GitHub Actions to create pull requests" in the repo settings).
 
 ## Serving the data
 
-The widget fetches `impl-links.json` relative to the built spec page (override
-with `window.implLinksDataUrl` before `DOMContentLoaded`). Copy the file next
-to the generated HTML when publishing; when it is absent (or on `file://`),
-the widget silently does nothing.
+The widget fetches `impl-links-index.json` (eagerly) and `impl-links.json`
+(on first click) relative to the built spec page; `window.implLinksDataUrl`
+(set before `DOMContentLoaded`) overrides the data URL, and the index is
+looked up in the same directory. Copy both files next to the generated HTML
+when publishing; when the index is absent (or on `file://`), the widget
+silently does nothing. Note that multipage subpages resolve relative URLs
+against `multipage/`, so for multipage builds either set a root-absolute
+`window.implLinksDataUrl` or copy the files into `multipage/` as well.

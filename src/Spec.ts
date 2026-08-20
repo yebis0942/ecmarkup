@@ -800,23 +800,29 @@ export default class Spec {
         versionBar.setAttribute('data-section-id', clause.id);
 
         for (const version of manifest.versions) {
-          const span = this.doc.createElement('span');
+          const segment = this.doc.createElement('button');
+          segment.setAttribute('type', 'button');
           const isPresent = sectionInfo.presentIn.includes(version.key);
-          span.className = isPresent
+          segment.className = isPresent
             ? 'version-segment'
             : 'version-segment version-segment--absent';
-          span.setAttribute('data-version', version.key);
+          segment.setAttribute('data-version', version.key);
+          if (isPresent) {
+            segment.setAttribute('aria-pressed', 'false');
+          } else {
+            segment.setAttribute('disabled', '');
+          }
 
           // Extract short edition number from the key (e.g., "es6" -> "6", "es15" -> "15").
           // Fall back to the full key for unexpected key shapes (no "es" prefix).
           const editionNum = /^es(.+)$/.exec(version.key)?.[1] ?? version.key;
-          span.textContent = editionNum;
-          span.setAttribute(
+          segment.textContent = editionNum;
+          segment.setAttribute(
             'title',
             isPresent ? version.label : `${version.label} — not present in this version`,
           );
 
-          versionBar.appendChild(span);
+          versionBar.appendChild(segment);
         }
 
         // Insert after the <h1> header

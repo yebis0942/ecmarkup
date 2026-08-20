@@ -93,8 +93,8 @@ describe('version bar', () => {
     const bar = doc.querySelector('.version-bar[data-section-id="sec-test"]');
     assert(bar, 'version bar element should exist for sec-test');
 
-    const es6 = bar.querySelector('span[data-version="es6"]');
-    const es5 = bar.querySelector('span[data-version="es5"]');
+    const es6 = bar.querySelector('button[data-version="es6"]');
+    const es5 = bar.querySelector('button[data-version="es5"]');
     assert(es6, 'expected a segment for es6');
     assert(es5, 'expected a segment for es5');
 
@@ -109,6 +109,8 @@ describe('version bar', () => {
     // es5 is NOT in presentIn -> absent segment.
     assert(es5.classList.contains('version-segment'));
     assert(es5.classList.contains('version-segment--absent'), 'es5 should be marked absent');
+    assert(es5.hasAttribute('disabled'), 'absent segments should be disabled buttons');
+    assert.strictEqual(es6.getAttribute('aria-pressed'), 'false');
 
     dom.window.close();
   });
