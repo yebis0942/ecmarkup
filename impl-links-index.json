@@ -1,11 +1,11 @@
 {
   "meta": {
-    "generated": "2026-07-16T14:27:05.145Z",
+    "generated": "2026-08-20T14:36:09.042Z",
     "engines": {
-      "v8": "15.2.88",
-      "jsc": "webkitgtk-2.52.5",
-      "sm": "FIREFOX-ANDROID_152_0_6_BUILD1",
-      "qjs": "v0.15.1"
+      "v8": "15.4.25",
+      "jsc": "webkitgtk-2.52.6",
+      "sm": "FIREFOX-ANDROID_154_0_BUILD1",
+      "qjs": "v0.16.2"
     }
   },
   "ids": [
