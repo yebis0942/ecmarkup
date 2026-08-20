@@ -6,3 +6,6 @@ package
 ecmarkup-*.tgz
 .vscode/
 docs/
+
+# cache written by scripts/generate-version-bar-data.ts
+.version-cache/
