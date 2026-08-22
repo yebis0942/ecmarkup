@@ -1,0 +1,84 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+JP:wght@400;500;700&amp;family=IBM+Plex+Mono:wght@400;600&amp;display=swap">
+  <style>
+    body { margin: 0; font-family: 'IBM Plex Sans JP', 'Hiragino Sans', system-ui, sans-serif; }
+    a { color: #8B1A10; text-decoration: underline; } a:hover { color: #fc7c00; }
+  </style>
+</helmet>
+<div style="width: 1280px; height: 720px; position: relative; background: #f7f3ec; color: #241d19; overflow: hidden; display: flex; flex-direction: column;">
+  <div style="height: 10px; flex: none; background: #8B1A10; display: flex;">
+    <div style="width: 180px; background: #fc7c00;"></div>
+  </div>
+  <div style="flex: 1; min-height: 0; padding: 36px 64px 20px 64px; display: flex; flex-direction: column; gap: 22px;">
+    <div style="display: flex; align-items: center; gap: 10px;">
+    <div style="background: #8B1A10; color: #fff; font-size: 15px; font-weight: 700; padding: 4px 12px; letter-spacing: 0.06em;">5. 移植して分かった違い ①</div>
+    <div style="height: 2px; flex: 1; background: linear-gradient(to right, #fc7c00, transparent);"></div>
+  </div>
+<h1 style="margin: 0; font-size: 44px; line-height: 1.25; font-weight: 700; color: #241d19;">「ソース」が 1 つじゃない</h1>
+    <div style="flex: 1; min-height: 0; display: flex; gap: 40px; align-items: center;">
+    <div style="flex: none; width: 360px; display: flex; flex-direction: column; gap: 16px; font-size: 21px; line-height: 1.6;">
+      <div>Rails なら gem のソースを出せば終わり。</div>
+      <div style="font-weight: 700;">ECMAScript 仕様に「実装」は無い。<br>あるのは<span style="color: #8B1A10;">エンジンが4つ</span>。</div>
+      <div style="color: #6b5f54; font-size: 18px;">それぞれ組み込み関数の登録規約が全部違う →</div>
+    </div>
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 12px;">
+      
+  <div style="background: #2a1712; color: #f3e6d8; padding: 14px 18px; display: flex; flex-direction: column; gap: 6px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline;">
+      <div style="font-size: 15px; font-weight: 700; color: #fc7c00;">V8</div>
+      <div style="font-size: 13px; color: #c9a68e;">Builtin 名から復元/実装は Torque</div>
+    </div>
+    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; white-space: nowrap; overflow: hidden;">SimpleInstallFunction(proto, "map", Builtin::kArrayMap)</div>
+  </div>
+      
+  <div style="background: #2a1712; color: #f3e6d8; padding: 14px 18px; display: flex; flex-direction: column; gap: 6px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline;">
+      <div style="font-size: 15px; font-weight: 700; color: #fc7c00;">JavaScriptCore</div>
+      <div style="font-size: 13px; color: #c9a68e;">実装は ArrayPrototype.js</div>
+    </div>
+    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; white-space: nowrap; overflow: hidden;">JSC_BUILTIN_FUNCTION…(mapPublicName(), arrayPrototypeMapCodeGenerator)</div>
+  </div>
+      
+  <div style="background: #2a1712; color: #f3e6d8; padding: 14px 18px; display: flex; flex-direction: column; gap: 6px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline;">
+      <div style="font-size: 15px; font-weight: 700; color: #fc7c00;">SpiderMonkey</div>
+      <div style="font-size: 13px; color: #c9a68e;">実装が JS!</div>
+    </div>
+    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; white-space: nowrap; overflow: hidden;">JS_SELF_HOSTED_FN("map", "ArrayMap", 1, 0)</div>
+  </div>
+      
+  <div style="background: #2a1712; color: #f3e6d8; padding: 14px 18px; display: flex; flex-direction: column; gap: 6px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline;">
+      <div style="font-size: 15px; font-weight: 700; color: #fc7c00;">QuickJS</div>
+      <div style="font-size: 13px; color: #c9a68e;">map の実体は every + magic フラグ</div>
+    </div>
+    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; white-space: nowrap; overflow: hidden;">JS_CFUNC_MAGIC_DEF("map", 1, js_array_every, special_map)</div>
+  </div>
+    </div>
+  </div>
+  <div style="flex: none; background: #fc7c00; color: #fff; padding: 12px 22px; font-size: 20px; font-weight: 700; text-align: center;">規約ベースで抽出 → 仕様の clause ID と突き合わせ = 493 セクション</div>
+  </div>
+  <div style="flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 64px 18px 64px;">
+    <div style="display: flex; gap: 3px; align-items: flex-end;"><div style="display: flex; flex-direction: column; gap: 2px; align-items: center;"><div style="height: 9px;"></div><div style="width: 12px; height: 12px; background: #ddd3c0; border: 1px solid #c9bda6;"></div></div><div style="display: flex; flex-direction: column; gap: 2px; align-items: center;"><div style="font-size: 9px; line-height: 1; color: #3f9c35; text-align: center; font-weight: 700;">+</div><div style="width: 12px; height: 12px; background: #bfe3b4; border: 1px solid #c9bda6;"></div></div><div style="display: flex; flex-direction: column; gap: 2px; align-items: center;"><div style="height: 9px;"></div><div style="width: 12px; height: 12px; background: #ddd3c0; border: 1px solid #c9bda6;"></div></div><div style="display: flex; flex-direction: column; gap: 2px; align-items: center;"><div style="font-size: 9px; line-height: 1; color: #3f9c35; text-align: center; font-weight: 700;">+</div><div style="width: 12px; height: 12px; background: #bfe3b4; border: 1px solid #c9bda6;"></div></div><div style="display: flex; flex-direction: column; gap: 2px; align-items: center;"><div style="font-size: 9px; line-height: 1; color: #3f9c35; text-align: center; font-weight: 700;">+</div><div style="width: 12px; height: 12px; background: #bfe3b4; border: 1px solid #c9bda6;"></div></div><div style="display: flex; flex-direction: column; gap: 2px; align-items: center;"><div style="height: 9px;"></div><div style="width: 12px; height: 12px; background: #ddd3c0; border: 1px solid #c9bda6;"></div></div><div style="display: flex; flex-direction: column; gap: 2px; align-items: center;"><div style="height: 9px;"></div><div style="width: 12px; height: 12px; background: #fc7c00; border: 1px solid #c9bda6;"></div></div><div style="display: flex; flex-direction: column; gap: 2px; align-items: center;"><div style="font-size: 9px; line-height: 1; color: #3f9c35; text-align: center; font-weight: 700;">+</div><div style="width: 12px; height: 12px; background: #bfe3b4; border: 1px solid #c9bda6;"></div></div><div style="display: flex; flex-direction: column; gap: 2px; align-items: center;"><div style="height: 9px;"></div><div style="width: 12px; height: 12px; background: #ddd3c0; border: 1px solid #c9bda6;"></div></div><div style="display: flex; flex-direction: column; gap: 2px; align-items: center;"><div style="height: 9px;"></div><div style="width: 12px; height: 12px; background: #ddd3c0; border: 1px solid #c9bda6;"></div></div></div>
+    <div style="font-size: 14px; color: #6b5f54;">APIdock → ECMAScript spec</div>
+    <div style="font-size: 15px; font-weight: 700; color: #8B1A10;">6 / 12</div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview": {"width": 1280, "height": 720}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
