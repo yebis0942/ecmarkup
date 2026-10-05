@@ -1,0 +1,52 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: 'IBM Plex Sans JP', 'IBM Plex Sans', 'Hiragino Sans', 'Noto Sans JP', 'Yu Gothic UI', system-ui, sans-serif; }
+    a { color: #8B1A10; text-decoration: underline; } a:hover { color: #fc7c00; }
+  </style>
+</helmet>
+<div style="width: 1280px; height: 720px; position: relative; background: #ffffff; color: #241d19; overflow: hidden; display: flex; flex-direction: column;">
+  <div style="flex: 1; min-height: 0; padding: 36px 64px 20px 64px; display: flex; flex-direction: column; gap: 22px;">
+    <h1 style="margin: 0; font-size: 44px; line-height: 1.25; font-weight: 700; color: #241d19;">「ES2021」はどのコミット?</h1>
+    <div style="flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px; justify-content: center;">
+    <div style="display: flex; gap: 28px; font-size: 19px; line-height: 1.55;">
+      <div style="flex: 1; background: #ffffff; border: 1px solid #e3d9c8; padding: 14px 18px;"><strong style="color: #6e130b;">素朴な答え:</strong>「リリースタグのコミットでしょ」→ <strong>×</strong><br><span style="color: #6b5f54; font-size: 17px;">diff ツールは main 系列のスナップショットで動く。タグはリリースブランチの先にある。</span></div>
+      <div style="flex: 1; background: #ffffff; border: 2px solid #fc7c00; padding: 14px 18px;"><strong style="color: #6e130b;">解:</strong> <span style="font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;">git merge-base &lt;tag&gt; main</span><br><span style="color: #6b5f54; font-size: 17px;">「リリースブランチが main から分岐した点」を各版の代表ハッシュにする。</span></div>
+    </div>
+    <svg viewBox="0 0 1100 240" style="width: 100%; height: 240px;">
+      <line x1="40" y1="150" x2="1060" y2="150" stroke="#241d19" stroke-width="5"></line>
+      <text x="1010" y="185" font-size="20" fill="#241d19" font-weight="700">main</text>
+      <circle cx="180" cy="150" r="8" fill="#241d19"></circle>
+      <circle cx="420" cy="150" r="8" fill="#241d19"></circle>
+      <circle cx="700" cy="150" r="8" fill="#241d19"></circle>
+      <line x1="420" y1="150" x2="560" y2="60" stroke="#8B1A10" stroke-width="4"></line>
+      <line x1="560" y1="60" x2="660" y2="60" stroke="#8B1A10" stroke-width="4"></line>
+      <circle cx="660" cy="60" r="9" fill="#8B1A10"></circle>
+      <text x="680" y="66" font-size="19" fill="#8B1A10" font-weight="700">tag: es2021 (リリースブランチ)</text>
+      <path d="M 420 150 l -14 26 l 28 0 z" fill="#fc7c00"></path>
+      <text x="300" y="205" font-size="20" fill="#fc7c00" font-weight="700">★ merge-base = 「ES2021」</text>
+    </svg>
+    <div style="font-size: 16px; color: #6b5f54;">例外:ES2016 のみ、スナップショットの収録範囲より古いため実リリースコミットをそのまま使用 —「歴史データには必ず例外が 1 個いる」</div>
+  </div>
+  </div>
+  <div style="flex: none; display: flex; justify-content: flex-end; padding: 0 64px 18px 64px;">
+    <div style="font-size: 15px; font-weight: 700; color: #8B1A10;">8 / 13</div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview": {"width": 1280, "height": 720}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

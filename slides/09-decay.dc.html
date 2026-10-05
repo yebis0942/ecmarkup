@@ -1,0 +1,47 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: 'IBM Plex Sans JP', 'IBM Plex Sans', 'Hiragino Sans', 'Noto Sans JP', 'Yu Gothic UI', system-ui, sans-serif; }
+    a { color: #8B1A10; text-decoration: underline; } a:hover { color: #fc7c00; }
+  </style>
+</helmet>
+<div style="width: 1280px; height: 720px; position: relative; background: #ffffff; color: #241d19; overflow: hidden; display: flex; flex-direction: column;">
+  <div style="flex: 1; min-height: 0; padding: 36px 64px 20px 64px; display: flex; flex-direction: column; gap: 22px;">
+    <h1 style="margin: 0; font-size: 44px; line-height: 1.25; font-weight: 700; color: #241d19;">非公式サービスは腐る</h1>
+    <div style="flex: 1; min-height: 0; display: flex; gap: 40px; align-items: center;">
+    <div style="flex: none; width: 470px;">
+      <div style="border: 3px solid #8B1A10; background: #fff; overflow: hidden; height: 300px; position: relative;">
+        <img src="apidock.png" style="width: 470px; display: block; margin-top: -170px;">
+        <div style="position: absolute; top: 140px; left: 8px; right: 8px; height: 64px; border: 3px solid #8B1A10;"></div>
+      </div>
+      <div style="font-size: 13px; color: #6b5f54; margin-top: 6px;">Latest events に並ぶ「Error on version import」</div>
+    </div>
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 14px; font-size: 21px; line-height: 1.6;">
+      <div style="display: flex; gap: 10px;"><div style="color: #8B1A10; font-weight: 700;">×</div><div>diff 量の表示は消えた</div></div>
+      <div style="display: flex; gap: 10px;"><div style="color: #8B1A10; font-weight: 700;">×</div><div>データ更新は事実上停止(Rails 5 前後で)</div></div>
+      <div style="display: flex; gap: 10px;"><div style="color: #3f9c35; font-weight: 700;">○</div><div>インラインソース表示は今も生きている</div></div>
+      <div style="background: #8B1A10; color: #fff; padding: 16px 22px; font-size: 22px; font-weight: 700; margin-top: 10px;">人手のメンテに依存した部分から死ぬ</div>
+    </div>
+  </div>
+  </div>
+  <div style="flex: none; display: flex; justify-content: flex-end; padding: 0 64px 18px 64px;">
+    <div style="font-size: 15px; font-weight: 700; color: #8B1A10;">9 / 13</div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview": {"width": 1280, "height": 720}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

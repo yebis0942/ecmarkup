@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: 'IBM Plex Sans JP', 'IBM Plex Sans', 'Hiragino Sans', 'Noto Sans JP', 'Yu Gothic UI', system-ui, sans-serif; }
+    a { color: #8B1A10; text-decoration: underline; } a:hover { color: #fc7c00; }
+  </style>
+</helmet>
+<div style="width: 1280px; height: 720px; position: relative; background: #ffffff; color: #241d19; overflow: hidden; display: flex; flex-direction: column;">
+  <div style="flex: 1; min-height: 0; padding: 36px 64px 20px 64px; display: flex; flex-direction: column; gap: 22px;">
+    <h1 style="margin: 0; font-size: 44px; line-height: 1.25; font-weight: 700; color: #241d19;">Q&amp;A で聞かれそうなこと</h1>
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 14px; justify-content: center;">
+    
+  <div style="background: #ffffff; border: 1px solid #e3d9c8; padding: 16px 20px; display: flex; flex-direction: column; gap: 8px;">
+    <div style="font-size: 19px; font-weight: 700;"><span style="color: #fc7c00;">Q.</span> Annex B やコンストラクタ本体は?</div>
+    <div style="font-size: 18px; line-height: 1.55; color: #241d19;"><span style="color: #8B1A10; font-weight: 700;">A.</span> v1 のスコープ外。対象はメソッド+アクセサのみ。</div>
+  </div>
+    
+  <div style="background: #ffffff; border: 1px solid #e3d9c8; padding: 16px 20px; display: flex; flex-direction: column; gap: 8px;">
+    <div style="font-size: 19px; font-weight: 700;"><span style="color: #fc7c00;">Q.</span> リンク切れは起きない?</div>
+    <div style="font-size: 18px; line-height: 1.55; color: #241d19;"><span style="color: #8B1A10; font-weight: 700;">A.</span> リリースタグ固定の permalink + CI がサンプル死活チェック。</div>
+  </div>
+    
+  <div style="background: #ffffff; border: 1px solid #e3d9c8; padding: 16px 20px; display: flex; flex-direction: column; gap: 8px;">
+    <div style="font-size: 19px; font-weight: 700;"><span style="color: #fc7c00;">Q.</span> 本家 ecmarkup に提案しないの?</div>
+    <div style="font-size: 18px; line-height: 1.55; color: #241d19;"><span style="color: #8B1A10; font-weight: 700;">A.</span> データが ecma262 固有で置き場所の議論が必要。まず自サイトで実績づくり。</div>
+  </div>
+  </div>
+  </div>
+  <div style="flex: none; display: flex; justify-content: flex-end; padding: 0 64px 18px 64px;">
+    <div style="font-size: 15px; font-weight: 700; color: #8B1A10;">12 / 13</div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview": {"width": 1280, "height": 720}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

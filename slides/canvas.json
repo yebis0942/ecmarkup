@@ -9,90 +9,98 @@
       "h": 720
     },
     {
-      "file": "02-apidock.dc.html",
-      "title": "2. APIdock",
+      "file": "02-read.dc.html",
+      "title": "2. 読んでいますか",
       "x": 1400,
       "y": 0,
       "w": 1280,
       "h": 720
     },
     {
-      "file": "03-mapping.dc.html",
-      "title": "3. 対応表",
+      "file": "03-apidock.dc.html",
+      "title": "3. APIdock",
       "x": 2800,
       "y": 0,
       "w": 1280,
       "h": 720
     },
     {
-      "file": "04-build.dc.html",
-      "title": "4. ビルドと vanilla JS",
+      "file": "04-mapping.dc.html",
+      "title": "4. 対応表",
       "x": 0,
       "y": 880,
       "w": 1280,
       "h": 720
     },
     {
-      "file": "05-demo.dc.html",
-      "title": "5. デモ",
+      "file": "05-build.dc.html",
+      "title": "5. ビルドと vanilla JS",
       "x": 1400,
       "y": 880,
       "w": 1280,
       "h": 720
     },
     {
-      "file": "06-engines.dc.html",
-      "title": "6. ソースが4つ",
+      "file": "06-demo.dc.html",
+      "title": "6. デモ",
       "x": 2800,
       "y": 880,
       "w": 1280,
       "h": 720
     },
     {
-      "file": "07-mergebase.dc.html",
-      "title": "7. merge-base",
+      "file": "07-engines.dc.html",
+      "title": "7. ソースが4つ",
       "x": 0,
       "y": 1760,
       "w": 1280,
       "h": 720
     },
     {
-      "file": "08-decay.dc.html",
-      "title": "8. 腐る",
+      "file": "08-mergebase.dc.html",
+      "title": "8. merge-base",
       "x": 1400,
       "y": 1760,
       "w": 1280,
       "h": 720
     },
     {
-      "file": "09-pipeline.dc.html",
-      "title": "9. 配管",
+      "file": "09-decay.dc.html",
+      "title": "9. 腐る",
       "x": 2800,
       "y": 1760,
       "w": 1280,
       "h": 720
     },
     {
-      "file": "10-matome.dc.html",
-      "title": "10. まとめ",
+      "file": "10-pipeline.dc.html",
+      "title": "10. 配管",
       "x": 0,
       "y": 2640,
       "w": 1280,
       "h": 720
     },
     {
-      "file": "11-qa.dc.html",
+      "file": "11-matome.dc.html",
+      "title": "11. まとめ",
+      "x": 1400,
+      "y": 2640,
+      "w": 1280,
+      "h": 720
+    },
+    {
+      "file": "12-qa.dc.html",
       "title": "予備: Q&A",
-      "x": 1400,
+      "x": 2800,
       "y": 2640,
       "w": 1280,
       "h": 720
     },
     {
-      "file": "12-screens.dc.html",
+      "file": "13-screens.dc.html",
       "title": "予備: スクショ",
-      "x": 2800,
-      "y": 2640,
+      "x": 0,
+      "y": 3520,
       "w": 1280,
       "h": 720
     }
@@ -103,14 +111,14 @@
       "x": -320,
       "y": 0,
       "w": 280,
-      "text": "本編はスライド 1〜10(約10分)。\n11・12 は予備。\n[ ] の部分は差し替えてください。"
+      "text": "本編はスライド 1〜11(約10分)。\n12・13 は予備。\n[ ] の部分は差し替えてください。"
     },
     {
       "id": "yobi",
       "x": -320,
       "y": 2640,
       "w": 280,
-      "text": "時間が押したら削る順:\n9 の詳細 → 4 を1文に圧縮 → 7 の図の深掘り。\n2〜3 と 6 の APIdock 対応の骨格は削らない。"
+      "text": "時間が押したら削る順:\n10 の詳細 → 5 を1文に圧縮 → 8 の図の深掘り。\n3〜4 と 7 の APIdock 対応の骨格は削らない。"
     }
   ],
   "launch": {
